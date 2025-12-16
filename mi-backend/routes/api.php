@@ -15,7 +15,7 @@ use App\Http\Controllers\Api\PlanificacionController; // Asegúrate de tener est
 use App\Http\Controllers\Api\ReporteController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PeriodoAcademicoController;
-
+use App\Http\Controllers\Api\VerificationController;
 
 Route::middleware('auth:sanctum')->group(function () {
     // ... tus otras rutas ...
@@ -27,6 +27,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // 1. LOGIN (Público)
 Route::post('/login', [AuthController::class, 'login']);
+
+Route::get('/email/verify/{id}/{hash}', [VerificationController::class, 'verify'])
+    ->name('verification.verify'); // Este nombre es OBLIGATORIO para Laravel
+
+// Ruta para reenviar correo (requiere autenticación)
+Route::middleware('auth:sanctum')->post('/email/resend', [VerificationController::class, 'resend']);
 
 // 2. RUTAS PROTEGIDAS (Requieren Token)
 Route::middleware('auth:sanctum')->group(function () {

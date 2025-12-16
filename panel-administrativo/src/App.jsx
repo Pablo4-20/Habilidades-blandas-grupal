@@ -36,6 +36,12 @@ function App() {
                 <Login />
             </PublicRoute>
         } />
+{/* --- AGREGA ESTO: Opción B: Ruta explícita /login --- */}
+        <Route path="/login" element={
+            <PublicRoute>
+                <Login />
+            </PublicRoute>
+        } />
 
         {/* Dashboard */}
         <Route path="/dashboard" element={

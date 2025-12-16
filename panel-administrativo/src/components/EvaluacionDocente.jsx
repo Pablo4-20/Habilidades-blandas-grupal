@@ -6,12 +6,13 @@ import CustomSelect from './ui/CustomSelect';
 import { 
     BookOpenIcon, UserGroupIcon, 
     CheckCircleIcon, ArrowPathIcon, InformationCircleIcon,
-    ClockIcon, ListBulletIcon, StarIcon, CalendarDaysIcon // Icono nuevo
+    ClockIcon, ListBulletIcon, StarIcon, CalendarDaysIcon 
 } from '@heroicons/react/24/outline';
 
 const EvaluacionDocente = () => {
     // --- ESTADOS ---
     const [asignaturas, setAsignaturas] = useState([]);
+    const [periodos, setPeriodos] = useState([]); // Nuevo estado para la lista de periodos
     const [habilidadesPlanificadas, setHabilidadesPlanificadas] = useState([]);
     
     // Estados de datos
@@ -22,36 +23,37 @@ const EvaluacionDocente = () => {
     const [actividadesRubrica, setActividadesRubrica] = useState([]); 
 
     // Selecciones
+    const [selectedPeriodo, setSelectedPeriodo] = useState(''); // El usuario elige esto primero
     const [selectedAsignatura, setSelectedAsignatura] = useState('');
     const [selectedParcial, setSelectedParcial] = useState('1');
-    const [periodoActual, setPeriodoActual] = useState(''); // Estado para el input de periodo
     const [habilidadActiva, setHabilidadActiva] = useState(null); 
 
     // --- CARGAS INICIALES ---
     useEffect(() => {
+        // Cargar Asignaturas
         api.get('/docente/asignaturas')
             .then(res => setAsignaturas(Array.isArray(res.data) ? res.data : []));
+        
+        // Cargar Periodos Activos
+        api.get('/periodos/activos')
+            .then(res => setPeriodos(Array.isArray(res.data) ? res.data : []));
     }, []);
 
-    // --- DETECTAR PERIODO AL CAMBIAR ASIGNATURA ---
-    useEffect(() => {
-        if (selectedAsignatura) {
-            // Buscamos la asignatura completa en el array para sacar su periodo
-            const asignaturaEncontrada = asignaturas.find(a => a.value === selectedAsignatura || a.id === selectedAsignatura);
-            if (asignaturaEncontrada) {
-                setPeriodoActual(asignaturaEncontrada.periodo);
-            }
-        } else {
-            setPeriodoActual('');
-        }
-    }, [selectedAsignatura, asignaturas]);
+    // --- MANEJO DE CAMBIO DE PERIODO ---
+    const handleCambioPeriodo = (nuevoPeriodo) => {
+        setSelectedPeriodo(nuevoPeriodo);
+        setSelectedAsignatura(''); // Reseteamos la materia al cambiar periodo
+        setHabilidadesPlanificadas([]);
+        setEstudiantes([]);
+        setHabilidadActiva(null);
+    };
 
     // --- CARGAR PLANIFICACIÓN CUANDO CAMBIA MATERIA O PARCIAL ---
     useEffect(() => {
-        if (selectedAsignatura && selectedParcial) {
+        if (selectedAsignatura && selectedParcial && selectedPeriodo) {
             cargarPlanificacion();
         }
-    }, [selectedAsignatura, selectedParcial]);
+    }, [selectedAsignatura, selectedParcial]); // El periodo ya está implícito en la asignatura filtrada, pero se usa en la función
 
     // --- CARGAR ESTUDIANTES ---
     useEffect(() => {
@@ -70,7 +72,8 @@ const EvaluacionDocente = () => {
         setActividadesRubrica([]);
         
         try {
-            const res = await api.get(`/planificaciones/verificar/${selectedAsignatura}?parcial=${selectedParcial}`);
+            // Enviamos también el periodo para asegurar la unicidad
+            const res = await api.get(`/planificaciones/verificar/${selectedAsignatura}?parcial=${selectedParcial}&periodo=${encodeURIComponent(selectedPeriodo)}`);
             
             if (res.data.tiene_asignacion && res.data.es_edicion) {
                 const guardadas = res.data.actividades_guardadas || {};
@@ -100,16 +103,14 @@ const EvaluacionDocente = () => {
             const res = await api.post('/docente/rubrica', {
                 asignatura_id: selectedAsignatura,
                 habilidad_blanda_id: habilidadActiva,
-                parcial: selectedParcial
+                parcial: selectedParcial,
+                periodo: selectedPeriodo // Importante: Enviamos el periodo seleccionado
             });
             
             if (res.data && res.data.estudiantes) {
                 setEstudiantes(res.data.estudiantes);
                 setActividadesRubrica(res.data.actividades || []);
                 
-                // Opcional: Si el backend devuelve un periodo diferente, actualizamos
-                if (res.data.periodo) setPeriodoActual(res.data.periodo);
-
                 if (res.data.estudiantes.length === 0) Swal.fire('Info', 'No hay estudiantes inscritos.', 'info');
                 setMostrarRubrica(true);
             } else {
@@ -153,6 +154,7 @@ const EvaluacionDocente = () => {
                 asignatura_id: selectedAsignatura,
                 habilidad_blanda_id: habilidadActiva,
                 parcial: selectedParcial,
+                periodo: selectedPeriodo, // Enviamos el periodo para guardar correctamente
                 notas
             });
             Swal.fire('¡Guardado!', `Calificaciones registradas correctamente.`, 'success');
@@ -161,12 +163,22 @@ const EvaluacionDocente = () => {
 
     const pendientes = estudiantes.filter(e => !e.nivel).length;
 
-    // --- OPCIONES UI ---
-    const opcionesAsignaturas = asignaturas.map(a => ({
+    // --- OPCIONES UI (Filtradas) ---
+    
+    // 1. Periodos
+    const opcionesPeriodos = periodos.map(p => ({
+        value: p.nombre,
+        label: p.nombre
+    }));
+
+    // 2. Asignaturas (Filtradas por el periodo seleccionado)
+    const asignaturasFiltradas = asignaturas.filter(a => a.periodo === selectedPeriodo);
+
+    const opcionesAsignaturas = asignaturasFiltradas.map(a => ({
         value: a.id,
         label: a.nombre,
         subtext: `${a.carrera} (${a.paralelo})`,
-        periodo: a.periodo // Guardamos esto para usarlo en la lógica
+        periodo: a.periodo 
     }));
 
     const opcionesParciales = [
@@ -174,12 +186,9 @@ const EvaluacionDocente = () => {
         { value: '2', label: 'Segundo Parcial' }
     ];
 
-    // Opción única para el select de periodo (ya que viene dado por la materia)
-    const opcionesPeriodo = periodoActual ? [{ value: periodoActual, label: periodoActual }] : [];
-
     return (
         <div className="space-y-6 animate-fade-in pb-20">
-            {/* CABECERA (LIMPIA, SIN PERIODO) */}
+            {/* CABECERA */}
             <div className="flex justify-between items-center">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900">Evaluación Docente</h2>
@@ -200,35 +209,35 @@ const EvaluacionDocente = () => {
                     {/* SELECTORES */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                         
-                        {/* 1. MATERIA */}
+                        {/* 1. PERIODO ACADÉMICO (Seleccionable primero) */}
                         <CustomSelect 
-                            label="1. Materia"
-                            options={opcionesAsignaturas}
-                            value={selectedAsignatura}
-                            onChange={setSelectedAsignatura}
-                            placeholder="-- Seleccionar --"
+                            label="1. Periodo Académico"
+                            icon={CalendarDaysIcon}
+                            options={opcionesPeriodos}
+                            value={selectedPeriodo}
+                            onChange={handleCambioPeriodo}
+                            placeholder="-- Seleccionar Periodo --"
                         />
 
-                        {/* 2. PARCIAL */}
+                        {/* 2. MATERIA (Filtrada) */}
+                        <div className={!selectedPeriodo ? 'opacity-50 pointer-events-none' : ''}>
+                            <CustomSelect 
+                                label="2. Materia"
+                                options={opcionesAsignaturas}
+                                value={selectedAsignatura}
+                                onChange={setSelectedAsignatura}
+                                placeholder={asignaturasFiltradas.length > 0 ? "-- Seleccionar Materia --" : "Sin materias en este periodo"}
+                            />
+                        </div>
+
+                        {/* 3. PARCIAL */}
                         <div className={!selectedAsignatura ? 'opacity-50 pointer-events-none' : ''}>
                             <CustomSelect 
-                                label="2. Parcial"
+                                label="3. Parcial"
                                 icon={ClockIcon}
                                 options={opcionesParciales}
                                 value={selectedParcial}
                                 onChange={setSelectedParcial}
-                            />
-                        </div>
-
-                        {/* 3. PERIODO ACADÉMICO (MOVIDO AQUÍ) */}
-                        <div className={!selectedAsignatura ? 'opacity-50 pointer-events-none' : ''}>
-                            <CustomSelect 
-                                label="3. Periodo Académico"
-                                icon={CalendarDaysIcon}
-                                options={opcionesPeriodo} // Solo muestra el periodo actual de la materia
-                                value={periodoActual}
-                                onChange={() => {}} // No hace nada porque es informativo/fijo
-                                placeholder={periodoActual || "--"}
                             />
                         </div>
                     </div>
@@ -274,8 +283,6 @@ const EvaluacionDocente = () => {
                         </div>
                     )}
                     
-                    {/* (El resto del código, Guía de Rúbrica y Tabla, sigue igual) */}
-                    {/* ... */}
                     {/* RÚBRICA FLOTANTE */}
                     {habilidadActiva && (
                         <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm">

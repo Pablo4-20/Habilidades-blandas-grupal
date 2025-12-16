@@ -10,6 +10,8 @@ use App\Models\Asignatura;
 use App\Models\Asignacion;
 use App\Models\Planificacion;
 use App\Models\Evaluacion;
+use App\Models\HabilidadBlanda; // Agregué el use explícito para limpieza
+use App\Models\Reporte;         // Agregué el use explícito para limpieza
 
 class DashboardController extends Controller
 {
@@ -20,39 +22,48 @@ class DashboardController extends Controller
         $data = [];
 
         if ($rol === 'admin') {
-            // Totales generales
             $data = [
                 'usuarios' => User::count(),
                 'estudiantes' => Estudiante::count(),
                 'asignaturas' => Asignatura::count(),
-                'habilidades' => \App\Models\HabilidadBlanda::count(),
+                'habilidades' => HabilidadBlanda::count(),
             ];
         } 
         elseif ($rol === 'coordinador') {
             // Progreso de la carrera
             $totalAsignaciones = Asignacion::count();
-            $totalPlanificaciones = Planificacion::count(); // Cuántos profes han planificado
-            // Calcular porcentaje de cumplimiento
-            $cumplimiento = $totalAsignaciones > 0 ? round(($totalPlanificaciones / $totalAsignaciones) * 100) : 0;
+            
+            // --- CORRECCIÓN AQUÍ ---
+            // En lugar de contar todas las filas (que duplica por parciales),
+            // contamos cuántas asignaturas ÚNICAS tienen al menos una planificación.
+            $materiasPlanificadas = Planificacion::distinct('asignatura_id')->count('asignatura_id');
+
+            // Calcular porcentaje (Máximo será 100%)
+            $cumplimiento = $totalAsignaciones > 0 ? round(($materiasPlanificadas / $totalAsignaciones) * 100) : 0;
+            
+            // Seguro extra por si acaso la BD tiene datos sucios antiguos
+            if ($cumplimiento > 100) $cumplimiento = 100;
 
             $data = [
                 'asignaciones' => $totalAsignaciones,
-                'planificaciones' => $totalPlanificaciones,
+                'planificaciones' => $materiasPlanificadas, // Mostramos materias cubiertas, no filas totales
                 'cumplimiento' => $cumplimiento,
-                'reportes' => \App\Models\Reporte::count()
+                'reportes' => Reporte::count()
             ];
         } 
         elseif ($rol === 'docente') {
             // Mis datos personales
             $misMaterias = Asignacion::where('docente_id', $user->id)->count();
             
-            // Mis planificaciones hechas
-            $misPlanes = Planificacion::where('docente_id', $user->id)->count();
+            // Aquí también podrías aplicar distinct si quieres que cuente materias y no parciales
+            $misPlanes = Planificacion::where('docente_id', $user->id)
+                            ->distinct('asignatura_id')
+                            ->count('asignatura_id');
             
             // Total estudiantes a mi cargo (aprox)
             $misAsignacionesIDs = Asignacion::where('docente_id', $user->id)->pluck('asignatura_id');
             $carreras = Asignatura::whereIn('id', $misAsignacionesIDs)->pluck('carrera');
-            $misAlumnos = Estudiante::whereIn('carrera', $carreras)->count(); // Estimado simple
+            $misAlumnos = Estudiante::whereIn('carrera', $carreras)->count(); 
 
             $data = [
                 'mis_materias' => $misMaterias,

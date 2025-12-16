@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import CustomSelect from './ui/CustomSelect';
@@ -15,7 +14,7 @@ const ReportesCoordinador = () => {
     const [reporteData, setReporteData] = useState([]);
     const [periodos, setPeriodos] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [periodosLoaded, setPeriodosLoaded] = useState(false); // ✅ NUEVO: Control de carga
+    const [periodosLoaded, setPeriodosLoaded] = useState(false);
     
     // --- FILTROS ---
     const [filtroCarrera, setFiltroCarrera] = useState('Todas');
@@ -33,9 +32,9 @@ const ReportesCoordinador = () => {
         cargarPeriodos();
     }, []);
 
-    // 2. CARGA DE REPORTE (SOLO DESPUÉS DE QUE LOS PERIODOS ESTÉN CARGADOS)
+    // 2. CARGA DE REPORTE
     useEffect(() => {
-        if (periodosLoaded) { // ✅ SOLUCIÓN: Solo cargar cuando periodos estén listos
+        if (periodosLoaded) { 
             cargarReporte();
         }
     }, [filtroCarrera, filtroPeriodo, periodosLoaded]);
@@ -45,10 +44,10 @@ const ReportesCoordinador = () => {
             const res = await api.get('/periodos/activos'); 
             const lista = Array.isArray(res.data) ? res.data : [];
             setPeriodos(lista);
-            setPeriodosLoaded(true); // ✅ Marcar como cargado
+            setPeriodosLoaded(true); 
         } catch (error) {
             console.error("Error cargando periodos:", error);
-            setPeriodosLoaded(true); // ✅ Marcar como cargado incluso con error
+            setPeriodosLoaded(true); 
         }
     };
 
@@ -61,12 +60,9 @@ const ReportesCoordinador = () => {
                     periodo: filtroPeriodo
                 }
             });
-            setReporteData(Array.isArray(res.data) ? res.data : []); // ✅ Validar que sea array
+            setReporteData(Array.isArray(res.data) ? res.data : []); 
         } catch (error) {
             console.error("Error cargando reporte:", error);
-            if (error.response) {
-                console.error("Detalles del error:", error.response.data);
-            }
             setReporteData([]);
         } finally {
             setLoading(false);
@@ -100,7 +96,6 @@ const ReportesCoordinador = () => {
             return;
         }
 
-        // --- ENCABEZADO DEL PDF ---
         const dibujarEncabezado = () => {
             const imgWidth = 25; const imgHeight = 25; 
             const marginTop = 5; const marginLeft = 15; 
@@ -181,7 +176,6 @@ const ReportesCoordinador = () => {
         }
     };
 
-    // Transformar periodos para el CustomSelect
     const opcionesPeriodos = [
         { value: '', label: 'Todos los Periodos' },
         ...periodos.map(p => ({ value: p.nombre, label: p.nombre }))
@@ -233,18 +227,24 @@ const ReportesCoordinador = () => {
                 
                 {/* COLUMNA 2: RESUMEN (TARJETAS) */}
                 <div className="md:col-span-3 grid grid-cols-3 gap-4 h-full">
+                    {/* COMPLETADOS */}
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-l-4 border-l-green-500 border-gray-100 flex flex-col justify-center">
                         <p className="text-xs font-bold text-gray-400 uppercase">Completados</p>
                         <p className="text-2xl font-bold text-green-600">
                             {reporteData.filter(r => r.estado === 'Completado').length}
                         </p>
                     </div>
+
+                    {/* EN PROCESO (AHORA INCLUYE PLANIFICADOS) */}
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-l-4 border-l-blue-500 border-gray-100 flex flex-col justify-center">
                         <p className="text-xs font-bold text-gray-400 uppercase">En Proceso</p>
                         <p className="text-2xl font-bold text-blue-600">
-                            {reporteData.filter(r => r.estado === 'En Proceso').length}
+                            {/* CAMBIO AQUÍ: Sumamos 'En Proceso' + 'Planificado' */}
+                            {reporteData.filter(r => r.estado === 'En Proceso' || r.estado === 'Planificado').length}
                         </p>
                     </div>
+
+                    {/* SIN PLANIFICAR */}
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-l-4 border-l-red-400 border-gray-100 flex flex-col justify-center">
                         <p className="text-xs font-bold text-gray-400 uppercase">Sin Planificar</p>
                         <p className="text-2xl font-bold text-red-500">

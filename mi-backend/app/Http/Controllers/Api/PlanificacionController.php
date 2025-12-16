@@ -19,13 +19,26 @@ public function verificar(Request $request, $asignatura_id)
         try {
             $user = $request->user();
             
-            // 1. Obtener Asignación y Periodo
-            $asignacion = Asignacion::where('asignatura_id', $asignatura_id)
-                ->where('docente_id', $user->id)
-                ->first();
+            // Recibimos el periodo desde el frontend
+            $periodo = $request->query('periodo');
+            $parcialSolicitado = $request->query('parcial');
+
+            // 1. Obtener Asignación (FILTRADA POR PERIODO SI EXISTE)
+            $queryAsignacion = Asignacion::where('asignatura_id', $asignatura_id)
+                ->where('docente_id', $user->id);
+
+            // CORRECCIÓN CLAVE: Si enviamos periodo, filtramos por él
+            if ($periodo) {
+                $queryAsignacion->where('periodo', $periodo);
+            }
+
+            $asignacion = $queryAsignacion->first();
 
             if (!$asignacion) {
-                return response()->json(['tiene_asignacion' => false, 'message' => 'No tienes asignada esta materia.']);
+                return response()->json([
+                    'tiene_asignacion' => false, 
+                    'message' => 'No tienes asignada esta materia en el periodo: ' . ($periodo ?? 'actual')
+                ]);
             }
 
             // 2. Obtener Habilidades Requeridas
@@ -35,26 +48,21 @@ public function verificar(Request $request, $asignatura_id)
                 return response()->json(['tiene_asignacion' => false, 'message' => 'Sin habilidades asignadas.']);
             }
 
-            // 3. BUSCAR PLANIFICACIÓN ESPECÍFICA (Materia + Docente + Periodo + PARCIAL)
-            
-            // Capturamos el parcial que viene en la URL (?parcial=1)
-            $parcialSolicitado = $request->query('parcial'); 
-
+            // 3. BUSCAR PLANIFICACIÓN
             $query = Planificacion::with('detalles')
                 ->where('asignatura_id', $asignatura_id)
                 ->where('docente_id', $user->id)
-                ->where('periodo_academico', $asignacion->periodo);
+                ->where('periodo_academico', $asignacion->periodo); // Usamos el periodo de la asignación encontrada
 
-            // Si el frontend nos dice qué parcial quiere ver, filtramos por él.
             if ($parcialSolicitado) {
                 $query->where('parcial', $parcialSolicitado);
             } else {
-                // Si no, traemos el último modificado (comportamiento por defecto)
                 $query->latest();
             }
 
             $planDocente = $query->first();
 
+            // ... (resto del código igual) ...
             $actividadesGuardadas = [];
             $esEdicion = false;
             $parcialGuardado = null;
@@ -69,9 +77,9 @@ public function verificar(Request $request, $asignatura_id)
 
             return response()->json([
                 'tiene_asignacion' => true,
-                'habilidades' => $habilidades, // Siempre devolvemos las habilidades base
+                'habilidades' => $habilidades,
                 'es_edicion' => $esEdicion,
-                'actividades_guardadas' => $actividadesGuardadas, // Solo si existen para este parcial
+                'actividades_guardadas' => $actividadesGuardadas,
                 'parcial_guardado' => $parcialGuardado,
                 'periodo_detectado' => $asignacion->periodo
             ]);
@@ -89,20 +97,28 @@ public function verificar(Request $request, $asignatura_id)
             'docente_id' => 'required',
             'parcial' => 'required',
             'periodo_academico' => 'required',
-            'detalles' => 'required|array', // React envía un array 'detalles'
+            'detalles' => 'required|array', 
         ]);
 
         return DB::transaction(function () use ($request) {
-            // 2. Guardar Padre (Planificación)
-            $planificacion = Planificacion::create([
-                'asignatura_id' => $request->asignatura_id,
-                'docente_id' => $request->docente_id,
-                'parcial' => $request->parcial,
-                'periodo_academico' => $request->periodo_academico
-            ]);
+            // 2. Guardar o Actualizar Padre (Planificación)
+            // Buscamos por la clave única compuesta (asignatura + parcial + periodo)
+            $planificacion = Planificacion::updateOrCreate(
+                [
+                    'asignatura_id' => $request->asignatura_id,
+                    'parcial' => $request->parcial,
+                    'periodo_academico' => $request->periodo_academico
+                ],
+                [
+                    'docente_id' => $request->docente_id // Actualizamos el docente si fuera necesario
+                ]
+            );
 
-            // 3. Guardar Hijos (Detalles)
-            // Recorremos el array que envió React
+            // 3. Actualizar Hijos (Detalles)
+            // Primero eliminamos los detalles previos de esta planificación para evitar duplicados
+            $planificacion->detalles()->delete();
+
+            // Recorremos el array que envió React e insertamos los nuevos
             foreach ($request->detalles as $detalle) {
                 $planificacion->detalles()->create([
                     'habilidad_blanda_id' => $detalle['habilidad_blanda_id'],
@@ -110,7 +126,7 @@ public function verificar(Request $request, $asignatura_id)
                 ]);
             }
 
-            return response()->json(['message' => 'Guardado exitosamente'], 201);
+            return response()->json(['message' => 'Guardado exitosamente'], 200);
         });
     }
 }

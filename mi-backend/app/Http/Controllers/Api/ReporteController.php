@@ -70,7 +70,8 @@ class ReporteController extends Controller
         $request->validate(['asignatura_id' => 'required']);
         $user = $request->user();
 
-        $planes = Planificacion::with(['asignatura', 'docente', 'habilidad'])
+        // CORRECCIÓN: Cargar detalles.habilidad para obtener el nombre correcto
+        $planes = Planificacion::with(['asignatura', 'docente', 'detalles.habilidad'])
             ->where('asignatura_id', $request->asignatura_id)
             ->where('docente_id', $user->id)
             ->get();
@@ -82,7 +83,7 @@ class ReporteController extends Controller
         $infoGeneral = [
             'facultad' => 'CIENCIAS ADMINISTRATIVAS, GESTIÓN EMPRESARIAL E INFORMÁTICA',
             'carrera' => $planes[0]->asignatura->carrera,
-            'docente' => $planes[0]->docente->name,
+            'docente' => $planes[0]->docente->name ?? ($planes[0]->docente->nombres . ' ' . $planes[0]->docente->apellidos),
             'asignatura' => $planes[0]->asignatura->nombre,
             'ciclo' => $planes[0]->asignatura->ciclo,
             'periodo' => $planes[0]->periodo_academico,
@@ -111,9 +112,14 @@ class ReporteController extends Controller
 
             $reporteDB = Reporte::where('planificacion_id', $plan->id)->first();
 
+            // Extraemos los nombres de las habilidades de los detalles
+            $nombresHabilidades = $plan->detalles->map(function($d) {
+                return $d->habilidad->nombre ?? null;
+            })->filter()->implode(', ');
+
             $reportes[] = [
                 'planificacion_id' => $plan->id,
-                'habilidad' => $plan->habilidad->nombre,
+                'habilidad' => $nombresHabilidades ?: 'Sin Habilidad Definida', // Usamos el nombre extraído
                 'parcial_asignado' => $plan->parcial,
                 'estadisticas' => $conteos, 
                 'detalle_p1' => $listaP1,
@@ -142,24 +148,22 @@ class ReporteController extends Controller
         });
     }
 
-    // --- REPORTE GENERAL PARA EL COORDINADOR (MODIFICADO) ---
+    // --- REPORTE GENERAL PARA EL COORDINADOR (CORREGIDO) ---
     public function reporteGeneral(Request $request)
     {
         // 1. Filtros
         $carrera = $request->query('carrera');
-        $periodo = $request->query('periodo'); // <--- NUEVO: Capturar el periodo
+        $periodo = $request->query('periodo');
 
         // 2. Consulta Base de Asignaciones
         $query = \App\Models\Asignacion::with(['asignatura', 'docente']);
 
-        // Aplicar Filtro Carrera
         if ($carrera && $carrera !== 'Todas') {
             $query->whereHas('asignatura', function($q) use ($carrera) {
                 $q->where('carrera', $carrera);
             });
         }
 
-        // Aplicar Filtro Periodo (ESTO FALTABA)
         if ($periodo && $periodo !== '') {
             $query->where('periodo', $periodo);
         }
@@ -168,21 +172,25 @@ class ReporteController extends Controller
 
         // 3. Procesar datos para el reporte
         $reporte = $asignaciones->map(function($asig) {
-            // Buscamos planificación (por docente, asignatura Y PERIODO de la asignación)
-            // Es vital filtrar la planificación por periodo_academico para que coincida con la asignación
-            $plan = Planificacion::with('habilidad')
+            // Buscamos planificación CARGANDO LOS DETALLES y HABILIDADES
+            $plan = Planificacion::with('detalles.habilidad') // <--- CAMBIO AQUÍ
                 ->where('docente_id', $asig->docente_id)
                 ->where('asignatura_id', $asig->asignatura_id)
-                ->where('periodo_academico', $asig->periodo) // <--- IMPORTANTE: Coincidencia de periodo
+                ->where('periodo_academico', $asig->periodo)
                 ->latest()
                 ->first();
 
             $estado = 'Sin Planificar';
             $progreso = 0;
-            $habilidad = '---';
+            $habilidadTexto = '---'; // Valor por defecto
 
             if ($plan) {
-                $habilidad = $plan->habilidad->nombre ?? '---';
+                // CORRECCIÓN: Extraer nombres de las habilidades de la tabla detalle
+                $nombres = $plan->detalles->map(function($detalle) {
+                    return $detalle->habilidad ? $detalle->habilidad->nombre : null;
+                })->filter()->unique()->implode(', ');
+
+                $habilidadTexto = $nombres ?: 'Sin Habilidades Asignadas';
                 $estado = 'Planificado';
 
                 $totalEstudiantes = \App\Models\Estudiante::where('carrera', $asig->asignatura->carrera)
@@ -193,12 +201,11 @@ class ReporteController extends Controller
 
                 if ($totalEstudiantes > 0 && $evaluados > 0) {
                     $progreso = round(($evaluados / $totalEstudiantes) * 100);
-                    // Tope lógico de 100%
                     if($progreso > 100) $progreso = 100; 
-                    
                     $estado = ($progreso >= 100) ? 'Completado' : 'En Proceso';
                 }
             }
+            
             $nombreDocente = $asig->docente 
                 ? ($asig->docente->apellidos . ' ' . $asig->docente->nombres) 
                 : 'Docente no asignado';
@@ -208,11 +215,11 @@ class ReporteController extends Controller
                 'carrera' => $asig->asignatura->carrera,
                 'ciclo' => $asig->asignatura->ciclo,
                 'asignatura' => $asig->asignatura->nombre,
-                'docente' => $nombreDocente, // Asegúrate de que tu User model tenga getAttribute 'name' o usa nombres/apellidos
-                'habilidad' => $habilidad,
+                'docente' => $nombreDocente,
+                'habilidad' => $habilidadTexto, // <--- Usamos el texto corregido
                 'estado' => $estado,
                 'progreso' => $progreso,
-                'periodo' => $asig->periodo // Retornamos el periodo por si sirve
+                'periodo' => $asig->periodo
             ];
         });
 

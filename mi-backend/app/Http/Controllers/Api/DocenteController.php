@@ -187,33 +187,47 @@ class DocenteController extends Controller
             'asignatura_id' => 'required', 
             'parcial' => 'required|in:1,2',
             'habilidad_blanda_id' => 'required',
-            'notas' => 'required|array' 
+            'notas' => 'required|array',
+            'periodo' => 'required' 
         ]);
 
         try {
             $user = $request->user();
 
             DB::transaction(function () use ($request, $user) {
+                
+                // 1. Verificamos asignación (Opcional, pero buena práctica)
                 $asignacion = Asignacion::where('asignatura_id', $request->asignatura_id)
                     ->where('docente_id', $user->id)
-                    ->firstOrFail();
+                    ->where('periodo', $request->periodo)
+                    ->first();
+                
+                // Si no hay asignación estricta, permitimos continuar si el docente ya tiene planificación,
+                // o lanzamos error si prefieres ser estricto. Por ahora, seguimos.
 
+                // 2. BUSCAR O CREAR PLANIFICACIÓN
+                // SOLUCIÓN: Separamos el array de búsqueda del array de valores adicionales.
+                // Buscamos SOLO por la clave única de la BD (Asignatura + Periodo + Parcial)
                 $plan = Planificacion::firstOrCreate(
                     [
                         'asignatura_id' => $request->asignatura_id,
-                        'docente_id' => $user->id,
-                        'periodo_academico' => $asignacion->periodo,
+                        'periodo_academico' => $request->periodo,
                         'parcial' => $request->parcial
+                    ],
+                    [
+                        // Estos valores solo se insertan si se crea un registro NUEVO
+                        'docente_id' => $user->id 
                     ]
                 );
 
+                // 3. Guardar las notas
                 foreach ($request->notas as $nota) {
                     if (!empty($nota['nivel'])) { 
                         Evaluacion::updateOrCreate(
                             [
                                 'planificacion_id' => $plan->id,
                                 'estudiante_id' => $nota['estudiante_id'],
-                                'habilidad_blanda_id' => $request->habilidad_blanda_id,
+                                'habilidad_blanda_id' => $request->habilidad_blanda_id, // Asegúrate de que este ID sea válido
                                 'parcial' => $request->parcial
                             ],
                             [
@@ -227,7 +241,9 @@ class DocenteController extends Controller
             return response()->json(['message' => 'Notas guardadas correctamente'], 200);
 
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Error: ' . $e->getMessage()], 500);
+            // Loguear el error real para depuración si es necesario
+            \Illuminate\Support\Facades\Log::error('Error guardando notas: ' . $e->getMessage());
+            return response()->json(['message' => 'Error al guardar: ' . $e->getMessage()], 500);
         }
     }
 

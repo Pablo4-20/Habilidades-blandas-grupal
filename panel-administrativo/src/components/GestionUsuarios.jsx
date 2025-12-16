@@ -49,7 +49,6 @@ const GestionUsuarios = () => {
         try {
             const endpoint = activeTab === 'administrativo' ? '/users' : '/estudiantes';
             const res = await api.get(endpoint);
-            // Aseguramos que sea un array
             setDataList(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
             console.error("Error cargando datos:", error);
@@ -62,7 +61,6 @@ const GestionUsuarios = () => {
     // Efecto inicial y al cambiar pestaña
     useEffect(() => {
         fetchData();
-        // Limpiar filtros al cambiar tab
         setBusqueda('');
         setFiltroRol('');
         setFiltroCarrera('');
@@ -78,7 +76,6 @@ const GestionUsuarios = () => {
 
     // --- IMPORTAR (SOLUCIÓN ACTUALIZACIÓN) ---
     const handleImportar = async (e) => {
-        // Evitar recarga del form
         if (e && e.preventDefault) e.preventDefault();
         
         if (!fileToUpload) return Swal.fire('Atención', 'Seleccione un archivo CSV.', 'warning');
@@ -91,7 +88,7 @@ const GestionUsuarios = () => {
         try {
             Swal.fire({
                 title: 'Subiendo...',
-                text: 'Procesando datos',
+                text: 'Procesando datos y enviando correos masivos.',
                 allowOutsideClick: false,
                 didOpen: () => Swal.showLoading()
             });
@@ -102,11 +99,8 @@ const GestionUsuarios = () => {
             
             Swal.fire('¡Éxito!', res.data.message, 'success');
             
-            // 1. Cerrar modal
             setShowImportModal(false);
-            // 2. Limpiar archivo
             setFileToUpload(null);
-            // 3. RECARGAR LA TABLA AUTOMÁTICAMENTE
             fetchData();
 
         } catch (error) {
@@ -115,7 +109,7 @@ const GestionUsuarios = () => {
         }
     };
 
-    // --- GUARDAR ---
+    // --- GUARDAR (AQUÍ ESTÁ LA MEJORA DE CARGA) ---
     const handleGuardar = async (e) => {
         e.preventDefault();
         const baseEndpoint = activeTab === 'administrativo' ? '/users' : '/estudiantes';
@@ -123,18 +117,53 @@ const GestionUsuarios = () => {
 
         if (payload.cedula.length !== 10) return Swal.fire('Error', 'La cédula debe tener 10 dígitos.', 'warning');
 
+        // 1. Mostrar alerta de "Guardando..."
+        Swal.fire({
+            title: editingId ? 'Actualizando...' : 'Creando Usuario...',
+            text: editingId 
+                ? 'Guardando cambios en la base de datos.' 
+                : 'Registrando y enviando correo de verificacion. Por favor espere.',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: () => {
+                Swal.showLoading(); // Muestra el spinner
+            }
+        });
+
         try {
             if (editingId) {
                 await api.put(`${baseEndpoint}/${editingId}`, payload);
-                Swal.fire({ title: '¡Actualizado!', icon: 'success', timer: 1500, showConfirmButton: false });
+                
+                // 2. Reemplazar alerta de carga con éxito
+                Swal.fire({ 
+                    title: '¡Actualizado!', 
+                    text: 'Los datos se guardaron correctamente.',
+                    icon: 'success', 
+                    timer: 2000, 
+                    showConfirmButton: false 
+                });
             } else {
                 await api.post(baseEndpoint, payload);
-                Swal.fire({ title: '¡Registrado!', icon: 'success', timer: 1500, showConfirmButton: false });
+                
+                // 2. Reemplazar alerta de carga con éxito
+                Swal.fire({ 
+                    title: '¡Registrado!', 
+                    text: 'El usuario ha sido creado y notificado por correo.',
+                    icon: 'success', 
+                    confirmButtonColor: '#3085d6' 
+                });
             }
             resetForms();
-            fetchData(); // Recargar tabla
+            fetchData(); 
         } catch (error) {
-            Swal.fire('Error', error.response?.data?.message || 'Error al guardar.', 'error');
+            // 3. Si falla, mostrar error
+            Swal.fire({
+                title: 'Error',
+                text: error.response?.data?.message || 'Error al guardar.',
+                icon: 'error',
+                confirmButtonColor: '#d33'
+            });
         }
     };
 
@@ -162,9 +191,16 @@ const GestionUsuarios = () => {
             title: '¿Eliminar?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#EF4444', confirmButtonText: 'Sí'
         }).then(async (result) => {
             if (result.isConfirmed) {
-                await api.delete(endpoint);
-                fetchData();
-                Swal.fire('Eliminado', '', 'success');
+                // Agregar carga al eliminar también para que se vea fluido
+                Swal.fire({ title: 'Eliminando...', didOpen: () => Swal.showLoading() });
+                
+                try {
+                    await api.delete(endpoint);
+                    fetchData();
+                    Swal.fire('Eliminado', '', 'success');
+                } catch (error) {
+                    Swal.fire('Error', 'No se pudo eliminar', 'error');
+                }
             }
         });
     };
@@ -175,10 +211,9 @@ const GestionUsuarios = () => {
         else setFormStudent({ ...formStudent, cedula: val });
     };
 
-  // Filtros visuales ROBUSTOS
+    // Filtros visuales
     const filteredData = dataList.filter(item => {
         const term = busqueda.toLowerCase();
-        // Unimos nombre + apellido + email + cedula para buscar en todo lado
         const fullName = `${item.nombres} ${item.apellidos}`.toLowerCase();
         const matchesText = fullName.includes(term) || 
                             (item.email || '').toLowerCase().includes(term) || 
@@ -187,15 +222,10 @@ const GestionUsuarios = () => {
         if (activeTab === 'administrativo') {
             return matchesText && (filtroRol ? item.rol === filtroRol : true);
         } else {
-            // --- CORRECCIÓN AQUÍ ---
-            // Convertimos ambos lados a minúsculas (.toLowerCase()) y quitamos espacios (.trim())
-            // para que "Software" sea igual a "software "
             const carreraItem = (item.carrera || '').toLowerCase().trim();
             const carreraFiltro = filtroCarrera.toLowerCase().trim();
-
             const matchCarrera = filtroCarrera ? carreraItem === carreraFiltro : true;
             const matchCiclo = filtroCiclo ? item.ciclo_actual === filtroCiclo : true;
-
             return matchesText && matchCarrera && matchCiclo;
         }
     });
@@ -270,14 +300,13 @@ const GestionUsuarios = () => {
                 )}
             </div>
 
-            {/* TABLA CON CORREO SEPARADO */}
+            {/* TABLA */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-100">
                     <thead className="bg-white">
                         <tr>
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Cédula</th>
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Nombres y Apellidos</th>
-                            {/* COLUMNA CORREO AGREGADA */}
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Correo Electrónico</th>
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">{activeTab === 'administrativo' ? 'Rol' : 'Carrera'}</th>
                             {activeTab === 'estudiantil' && <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Ciclo</th>}
@@ -289,38 +318,28 @@ const GestionUsuarios = () => {
                             <tr><td colSpan="6" className="text-center py-12 text-gray-400"><FunnelIcon className="h-10 w-10 mx-auto mb-2 opacity-20"/>Sin resultados.</td></tr>
                         ) : filteredData.map((item) => (
                             <tr key={item.id} className="hover:bg-gray-50 transition">
-                                {/* CÉDULA */}
                                 <td className="px-6 py-4">
                                     <div className="text-sm text-gray-600 font-mono bg-gray-50 px-2 py-1 rounded w-fit border border-gray-200 flex items-center gap-1">
                                         <IdentificationIcon className="h-3 w-3 text-gray-400"/> 
                                         {item.cedula || 'S/N'}
                                     </div>
                                 </td>
-
-                                {/* NOMBRES */}
                                 <td className="px-6 py-4 flex items-center gap-3">
                                     <div className="h-8 w-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center font-bold text-xs border">{getInitials(item.nombres)}</div>
                                     <div className="text-sm font-semibold text-gray-900">{item.apellidos} {item.nombres}</div>
                                 </td>
-
-                                {/* CORREO (NUEVA COLUMNA) */}
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-2 text-sm text-gray-500">
                                         <EnvelopeIcon className="h-4 w-4 text-gray-400"/>
                                         {item.email}
                                     </div>
                                 </td>
-
-                                {/* ROL / CARRERA */}
                                 <td className="px-6 py-4 text-sm">
                                     {activeTab === 'administrativo' ? 
                                         <span className={`px-2 py-1 text-xs font-bold uppercase rounded-full border ${getRoleStyle(item.rol)}`}>{item.rol}</span> 
                                         : item.carrera}
                                 </td>
-
                                 {activeTab === 'estudiantil' && <td className="px-6 py-4 text-sm font-bold text-gray-600">{item.ciclo_actual}</td>}
-
-                                {/* ACCIONES */}
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex items-center justify-end gap-2">
                                         <button onClick={() => handleEditar(item)} className="text-gray-400 hover:text-amber-600 p-2 hover:bg-amber-50 rounded-full transition"><PencilSquareIcon className="h-5 w-5" /></button>
@@ -341,7 +360,6 @@ const GestionUsuarios = () => {
                             {editingId ? 'Editar' : 'Nuevo'} {activeTab === 'administrativo' ? 'Usuario' : 'Estudiante'}
                         </h3>
                         <form onSubmit={handleGuardar} className="space-y-4">
-                            {/* Cédula */}
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cédula</label>
                                 <div className="relative">
@@ -351,7 +369,6 @@ const GestionUsuarios = () => {
                                         onChange={(e) => handleInputCedula(e, activeTab === 'administrativo')} placeholder="1234567890"/>
                                 </div>
                             </div>
-
                             {activeTab === 'administrativo' ? (
                                 <>
                                     <div className="grid grid-cols-2 gap-4">
@@ -405,7 +422,6 @@ const GestionUsuarios = () => {
                         <input type="file" accept=".csv" onChange={(e) => setFileToUpload(e.target.files[0])} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-green-50 file:text-green-700 file:border-0 mb-6 cursor-pointer"/>
                         <div className="flex gap-3">
                             <button type="button" onClick={() => setShowImportModal(false)} className="flex-1 py-2 bg-gray-100 rounded-lg font-bold">Cancelar</button>
-                            {/* BOTÓN CON TYPE BUTTON PARA EVITAR ERRORES */}
                             <button type="button" onClick={handleImportar} className="flex-1 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700">Subir</button>
                         </div>
                     </div>

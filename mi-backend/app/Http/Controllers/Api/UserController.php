@@ -8,6 +8,7 @@ use App\Models\Estudiante;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Auth\Events\Registered;
 
 class UserController extends Controller
 {
@@ -44,6 +45,7 @@ class UserController extends Controller
             'rol' => $request->rol
         ]);
 
+        event(new Registered($user));
         return response()->json(['message' => 'Usuario creado correctamente', 'user' => $user]);
     }
 
@@ -57,82 +59,83 @@ class UserController extends Controller
     // Importación Masiva de Usuarios (CSV)
 // --- CARGA MASIVA INTELIGENTE (USUARIOS) ---
     public function import(Request $request)
-    {
-        $request->validate(['file' => 'required|file']);
-        $file = $request->file('file');
-        
-        $contenido = file_get_contents($file->getRealPath());
-        $primerLinea = explode(PHP_EOL, $contenido)[0] ?? '';
-        $separador = str_contains($primerLinea, ';') ? ';' : ',';
+{
+    $request->validate(['file' => 'required|file']);
+    $file = $request->file('file');
+    
+    $contenido = file_get_contents($file->getRealPath());
+    $primerLinea = explode(PHP_EOL, $contenido)[0] ?? '';
+    $separador = str_contains($primerLinea, ';') ? ';' : ',';
 
-        $data = array_map(function($linea) use ($separador) {
-            return str_getcsv($linea, $separador);
-        }, file($file->getRealPath()));
+    $data = array_map(function($linea) use ($separador) {
+        return str_getcsv($linea, $separador);
+    }, file($file->getRealPath()));
 
-        array_shift($data); 
+    array_shift($data); 
 
-        $count = 0;
-        $actualizados = 0;
+    $count = 0;
+    $actualizados = 0;
 
-        foreach ($data as $index => $row) {
-            if (empty($row) || count($row) < 6) continue;
+    foreach ($data as $index => $row) {
+        if (empty($row) || count($row) < 6) continue;
 
-            try {
-                // --- 1. NORMALIZACIÓN ---
-                
-                // Cédula: Corregir ceros
-                $cedulaCSV = trim($row[0]);
-                $cedulaFinal = str_pad($cedulaCSV, 10, '0', STR_PAD_LEFT);
-                
-                if (Estudiante::where('cedula', $cedulaFinal)->exists()) {
-                    throw new \Exception("La cédula $cedulaFinal ya está registrada como Estudiante.");
-                }
-                // Nombres/Apellidos: Formato Título (Juan Pérez)
-                $nombresFinal   = mb_convert_case(trim($row[1]), MB_CASE_TITLE, "UTF-8");
-                $apellidosFinal = mb_convert_case(trim($row[2]), MB_CASE_TITLE, "UTF-8");
-                
-                // Email: Minúsculas
-                $emailFinal = strtolower(trim($row[3]));
-                
-                // Rol: Minúsculas estrictas para que funcione la seguridad
-                $rolFinal = strtolower(trim($row[5])); 
-
-
-                // --- 2. BÚSQUEDA ---
-                $usuario = User::where('cedula', $cedulaFinal)
-                               ->orWhere('cedula', $cedulaCSV)
-                               ->orWhere('email', $emailFinal)
-                               ->first();
-
-                // --- 3. GUARDADO ---
-                $datosUsuario = [
-                    'cedula'    => $cedulaFinal,
-                    'nombres'   => $nombresFinal,
-                    'apellidos' => $apellidosFinal,
-                    'email'     => $emailFinal,
-                    'password'  => bcrypt(trim($row[4])), 
-                    'rol'       => $rolFinal
-                ];
-
-                if ($usuario) {
-                    $usuario->update($datosUsuario);
-                    $actualizados++;
-                } else {
-                    User::create($datosUsuario);
-                    $count++;
-                }
-
-            } catch (\Exception $e) {
-                return response()->json([
-                    'message' => "Error en Fila " . ($index + 1) . ": " . $e->getMessage()
-                ], 500);
+        try {
+            // --- 1. NORMALIZACIÓN ---
+            $cedulaCSV = trim($row[0]);
+            $cedulaFinal = str_pad($cedulaCSV, 10, '0', STR_PAD_LEFT);
+            
+            if (Estudiante::where('cedula', $cedulaFinal)->exists()) {
+                throw new \Exception("La cédula $cedulaFinal ya está registrada como Estudiante.");
             }
-        }
 
-        return response()->json([
-            'message' => "Proceso completado: $count nuevos, $actualizados actualizados."
-        ]);
+            $nombresFinal   = mb_convert_case(trim($row[1]), MB_CASE_TITLE, "UTF-8");
+            $apellidosFinal = mb_convert_case(trim($row[2]), MB_CASE_TITLE, "UTF-8");
+            $emailFinal     = strtolower(trim($row[3]));
+            $rolFinal       = strtolower(trim($row[5])); 
+
+            // --- 2. BÚSQUEDA ---
+            $usuario = User::where('cedula', $cedulaFinal)
+                           ->orWhere('cedula', $cedulaCSV)
+                           ->orWhere('email', $emailFinal)
+                           ->first();
+
+            // --- 3. PREPARAR DATOS ---
+            $datosUsuario = [
+                'cedula'    => $cedulaFinal,
+                'nombres'   => $nombresFinal,
+                'apellidos' => $apellidosFinal,
+                'email'     => $emailFinal,
+                'password'  => bcrypt(trim($row[4])), 
+                'rol'       => $rolFinal
+            ];
+
+            // --- 4. GUARDADO ---
+            // CORRECCIÓN AQUÍ 👇
+            if ($usuario) {
+                // Si existe, actualizamos (NO enviamos correo de registro)
+                $usuario->update($datosUsuario);
+                $actualizados++;
+            } else {
+                // Si NO existe, creamos
+                $nuevoUsuario = User::create($datosUsuario);
+                
+                // Y ahora sí lanzamos el evento con el usuario RECIÉN CREADO
+                event(new Registered($nuevoUsuario));
+                
+                $count++;
+            }
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => "Error en Fila " . ($index + 1) . ": " . $e->getMessage()
+            ], 500);
+        }
     }
+
+    return response()->json([
+        'message' => "Proceso completado: $count nuevos, $actualizados actualizados."
+    ]);
+}
     
 public function update(Request $request, string $id)
 {
