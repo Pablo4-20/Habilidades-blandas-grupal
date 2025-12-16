@@ -1,12 +1,33 @@
-Sistema de Gestión de Habilidades Blandas - UEB📝 Visión GeneralEste sistema digitaliza el proceso de Planificación, Seguimiento y Evaluación de Habilidades Blandas para las carreras de Ingeniería de Software y Tecnologías de la Información (TI) de la Universidad Estatal de Bolívar (UEB)1111.El proyecto se basa en la Guía para Desarrollo de Habilidades Blandas 2025-2028 2y soporta la metodología de evaluación en dos parciales (inicial y final) 3, utilizando la rúbrica de niveles 1 al 54.✨ Características PrincipalesAutenticación por Roles (RBAC): Acceso diferenciado para Administrador, Coordinador y Docente.Dashboard Unificado: Una única ruta (/dashboard) que renderiza la interfaz según el rol del usuario (UX mejorada).Planificación Docente: Los docentes pueden asociar una Habilidad Blanda a una Asignatura y un Periodo (cumpliendo con el Procedimiento, pág. 22).Diseño Elegante: Interfaz de usuario moderna construida con Tailwind CSS.Catálogos: Las Habilidades Blandas (Adaptabilidad, Liderazgo, etc.) y Asignaturas se cargan automáticamente desde los Seeders basados en el documento fuente.💻 Stack TecnológicoComponenteTecnologíaRolBackendLaravel (PHP)API RESTful y Lógica de Negocio.FrontendReact (Vite)Panel Administrativo.Base de DatosPostgreSQLPersistencia de datos académicos.EstilosTailwind CSSFramework de diseño.AutenticaciónLaravel SanctumManejo de tokens de sesión.⚙️ Configuración e Instalación1. Requisitos PreviosAsegúrate de tener instalado: PHP >= 8.2, Composer, Node.js/NPM, y un servidor PostgreSQL activo.2. Configuración del Backend (mi-backend)Ejecuta estos comandos en la carpeta raíz del proyecto (mi-backend):Bash# 2.1. Instalar dependencias de PHP
-composer install
+Sistema de Gestión de Habilidades Blandas - UEB
+📝 Visión General
+Este sistema digitaliza el proceso de Planificación, Seguimiento y Evaluación de Habilidades Blandas para las carreras de Ingeniería de Software y Tecnologías de la Información (TI) de la Universidad Estatal de Bolívar (UEB).
 
+El proyecto se basa en la Guía para Desarrollo de Habilidades Blandas 2025-2028 2y soporta la metodología de evaluación en dos parciales (inicial y final) 3, utilizando la rúbrica de niveles 1 al 5 
+
+✨ Características PrincipalesAutenticación por Roles (RBAC): Acceso diferenciado para Administrador, Coordinador y Docente.
+Dashboard Unificado: Una única ruta (/dashboard) que renderiza la interfaz según el rol del usuario (UX mejorada).
+Planificación Docente: Los docentes pueden asociar una Habilidad Blanda a una Asignatura y un Periodo (cumpliendo con el Procedimiento, pág. 22).
+Diseño Elegante: Interfaz de usuario moderna construida con Tailwind CSS.Catálogos: Las Habilidades Blandas (Adaptabilidad, Liderazgo, etc.) y Asignaturas se cargan automáticamente desde los Seeders basados en el documento fuente.
+💻 Stack Tecnológico
+Componente      Tecnología              Rol
+Backend         Laravel (PHP)     API RESTful y Lógica de Negocio.
+Frontend        React (Vite)      Panel Administrativo.
+Base de Datos   PostgreSQL        Persistencia de datos académicos.Estilos         Tailwind CSS      Framework de diseño.
+Autenticación   Laravel Sanctum   Manejo de tokens de sesión.
+⚙️ Configuración e Instalación
+1. Requisitos Previos
+Asegúrate de tener instalado: PHP >= 8.2, Composer, Node.js/NPM, y un servidor PostgreSQL activo.
+2. Configuración del Backend (mi-backend)
+Ejecuta estos comandos en la carpeta raíz del proyecto (mi-backend)
+# 2.1. Instalar dependencias de PHP
+composer install
 # 2.2. Duplicar el archivo de entorno
 cp .env.example .env
-
 # 2.3. Generar la clave de aplicación
 php artisan key:generate
-🛠️ Configuración .envEdita el archivo .env y asegúrate de que la conexión a PostgreSQL y la base de datos coincidan con lo que configuramos:Fragmento de códigoDB_CONNECTION=pgsql
+
+🛠️ Configuración .env
+Edita el archivo .env y asegúrate de que la conexión a PostgreSQL y la base de datos coincidan con lo que configuramos:Fragmento de códigoDB_CONNECTION=pgsql
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_DATABASE=ueb_habilidades_db

@@ -13,9 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class DocenteController extends Controller
 {
-    
-
-    // 1. Obtener las materias asignadas al docente logueado
+    // 1. MIS ASIGNATURAS
     public function misAsignaturas(Request $request)
     {
         $user = $request->user();
@@ -27,16 +25,16 @@ class DocenteController extends Controller
         return $asignaciones->map(function ($asignacion) use ($user) {
             if (!$asignacion->asignatura) return null; 
 
-            // Verificar si ya existe planificación para el parcial 1 y parcial 2
-            $planificacion_p1 = \App\Models\Planificacion::where('asignatura_id', $asignacion->asignatura->id)
+            // Verificamos si existe planificación para P1 y P2
+            $planificacion_p1 = Planificacion::where('asignatura_id', $asignacion->asignatura->id)
                                     ->where('docente_id', $user->id)
-                                    ->where('periodo_academico', $asignacion->periodo) // CRUCIAL: Mismo Periodo
+                                    ->where('periodo_academico', $asignacion->periodo)
                                     ->where('parcial', '1')
                                     ->exists();
 
-            $planificacion_p2 = \App\Models\Planificacion::where('asignatura_id', $asignacion->asignatura->id)
+            $planificacion_p2 = Planificacion::where('asignatura_id', $asignacion->asignatura->id)
                                     ->where('docente_id', $user->id)
-                                    ->where('periodo_academico', $asignacion->periodo) // CRUCIAL: Mismo Periodo
+                                    ->where('periodo_academico', $asignacion->periodo)
                                     ->where('parcial', '2')
                                     ->exists();
             
@@ -48,34 +46,38 @@ class DocenteController extends Controller
                 'paralelo' => $asignacion->paralelo,
                 'asignacion_id' => $asignacion->id,
                 'periodo' => $asignacion->periodo,
-                'planificacion_p1' => $planificacion_p1, // Nuevo: Estado P1
-                'planificacion_p2' => $planificacion_p2  // Nuevo: Estado P2
+                'planificacion_p1' => $planificacion_p1,
+                'planificacion_p2' => $planificacion_p2
             ];
         })->filter()->values();
     }
-    // 2. Obtener habilidades planificadas (usado en los filtros)
+
+    // 2. MIS HABILIDADES (CORREGIDO: detalles.habilidad)
     public function misHabilidades($asignatura_id, Request $request)
     {
         $user = $request->user();
         
-        $planes = Planificacion::with('habilidad')
+        // CORRECCIÓN AQUÍ: Usamos 'detalles.habilidad'
+        $plan = Planificacion::with('detalles.habilidad') 
             ->where('docente_id', $user->id)
             ->where('asignatura_id', $asignatura_id)
-            ->get();
+            ->latest()
+            ->first();
 
-        return $planes->map(function ($plan) {
-            if (!$plan->habilidad) return null;
+        if (!$plan) return [];
 
+        return $plan->detalles->map(function ($detalle) use ($plan) {
             return [
                 'planificacion_id' => $plan->id,
-                'habilidad_nombre' => $plan->habilidad->nombre,
+                'habilidad_id' => $detalle->habilidad->id,
+                'habilidad_nombre' => $detalle->habilidad->nombre,
                 'periodo' => $plan->periodo_academico,
                 'parcial' => $plan->parcial 
             ];
-        })->filter()->values();
+        });
     }
     
-    // 3. Ver estudiantes (Solo lista simple)
+    // 3. VER ESTUDIANTES
     public function verEstudiantes($asignatura_id, Request $request)
     {
         $user = $request->user();
@@ -92,63 +94,259 @@ class DocenteController extends Controller
         return response()->json($estudiantes);
     }
 
-    // 4. Obtener Rúbrica (Estudiantes + Notas existentes)
-    public function obtenerRubrica(Request $request)
+    // 4. OBTENER RÚBRICA Y ACTIVIDADES
+    public function rubrica(Request $request)
     {
         $request->validate([
             'asignatura_id' => 'required',
-            'planificacion_id' => 'required', 
-            'parcial' => 'required|in:1,2'
+            'parcial' => 'required|in:1,2',
         ]);
 
-        $asignatura = Asignatura::findOrFail($request->asignatura_id);
+        $user = $request->user();
 
+        // A. Periodo
+        $asignacion = Asignacion::where('asignatura_id', $request->asignatura_id)
+            ->where('docente_id', $user->id)
+            ->first();
+
+        $periodo = $asignacion ? $asignacion->periodo : 'Sin Periodo';
+
+        // B. Estudiantes
+        $asignatura = Asignatura::findOrFail($request->asignatura_id);
         $estudiantes = Estudiante::where('carrera', $asignatura->carrera)
             ->where('ciclo_actual', $asignatura->ciclo)
             ->orderBy('apellidos')
             ->get();
 
-        $notasExistentes = Evaluacion::where('planificacion_id', $request->planificacion_id)
-            ->where('parcial', $request->parcial)
-            ->get()
-            ->keyBy('estudiante_id');
+        // C. Actividades
+        $actividades = [];
+        
+        if ($request->habilidad_blanda_id && $asignacion) {
+            $plan = Planificacion::where('asignatura_id', $request->asignatura_id)
+                ->where('docente_id', $user->id)
+                ->where('periodo_academico', $asignacion->periodo)
+                ->where('parcial', $request->parcial)
+                ->first();
 
-        $lista = $estudiantes->map(function ($est) use ($notasExistentes) {
+            if ($plan) {
+                // Buscamos en la relación detalles
+                $detalle = $plan->detalles()
+                            ->where('habilidad_blanda_id', $request->habilidad_blanda_id)
+                            ->first();
+
+                if ($detalle && !empty($detalle->actividades)) {
+                    $listaTexto = explode("\n", $detalle->actividades);
+                    foreach($listaTexto as $txt) {
+                        if(trim($txt) !== '') {
+                            $actividades[] = ['descripcion' => trim($txt)];
+                        }
+                    }
+                }
+            }
+        }
+
+        if (empty($actividades)) {
+            $actividades = [
+                ['descripcion' => 'No se encontraron actividades planificadas.'],
+                ['descripcion' => 'Verifica en "Mis Habilidades" si guardaste el texto.']
+            ];
+        }
+
+        // D. Notas
+        $notasMap = [];
+        if ($request->habilidad_blanda_id && isset($plan)) {
+            $evaluaciones = Evaluacion::where('planificacion_id', $plan->id)
+                ->where('habilidad_blanda_id', $request->habilidad_blanda_id)
+                ->get();
+            
+            foreach($evaluaciones as $ev) {
+                $notasMap[$ev->estudiante_id] = $ev->nivel;
+            }
+        }
+
+        // E. Respuesta
+        $listaEstudiantes = $estudiantes->map(function ($est) use ($notasMap) {
             return [
                 'estudiante_id' => $est->id,
                 'nombres' => $est->apellidos . ' ' . $est->nombres,
-                'nivel' => $notasExistentes->get($est->id)->nivel ?? null
+                'nivel' => $notasMap[$est->id] ?? null
             ];
         });
 
-        return response()->json($lista);
+        return response()->json([
+            'periodo' => $periodo,
+            'actividades' => $actividades,
+            'estudiantes' => $listaEstudiantes
+        ]);
     }
 
-    // 5. Guardar calificaciones
+    // 5. GUARDAR NOTAS
     public function guardarNotas(Request $request)
     {
         $request->validate([
-            'planificacion_id' => 'required|exists:planificaciones,id',
+            'asignatura_id' => 'required', 
             'parcial' => 'required|in:1,2',
+            'habilidad_blanda_id' => 'required',
             'notas' => 'required|array' 
         ]);
 
-        DB::transaction(function () use ($request) {
-            foreach ($request->notas as $nota) {
-                if (!empty($nota['nivel'])) { 
-                    Evaluacion::updateOrCreate(
-                        [
-                            'planificacion_id' => $request->planificacion_id,
-                            'estudiante_id' => $nota['estudiante_id'],
-                            'parcial' => $request->parcial
-                        ],
-                        ['nivel' => $nota['nivel']]
-                    );
-                }
-            }
-        });
+        try {
+            $user = $request->user();
 
-        return response()->json(['message' => 'Notas guardadas correctamente']);
+            DB::transaction(function () use ($request, $user) {
+                $asignacion = Asignacion::where('asignatura_id', $request->asignatura_id)
+                    ->where('docente_id', $user->id)
+                    ->firstOrFail();
+
+                $plan = Planificacion::firstOrCreate(
+                    [
+                        'asignatura_id' => $request->asignatura_id,
+                        'docente_id' => $user->id,
+                        'periodo_academico' => $asignacion->periodo,
+                        'parcial' => $request->parcial
+                    ]
+                );
+
+                foreach ($request->notas as $nota) {
+                    if (!empty($nota['nivel'])) { 
+                        Evaluacion::updateOrCreate(
+                            [
+                                'planificacion_id' => $plan->id,
+                                'estudiante_id' => $nota['estudiante_id'],
+                                'habilidad_blanda_id' => $request->habilidad_blanda_id,
+                                'parcial' => $request->parcial
+                            ],
+                            [
+                                'nivel' => $nota['nivel'],
+                            ]
+                        );
+                    }
+                }
+            });
+
+            return response()->json(['message' => 'Notas guardadas correctamente'], 200);
+
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Error: ' . $e->getMessage()], 500);
+        }
     }
-    
+
+    // ==========================================
+    //  6. PDF DATA (CORREGIDO: detalles.habilidad)
+    // ==========================================
+    public function pdfData(Request $request)
+    {
+        $request->validate([
+            'asignatura_id' => 'required',
+            'periodo' => 'required' 
+        ]);
+        
+        $user = $request->user();
+
+        // 1. Info General
+        $asignatura = Asignatura::findOrFail($request->asignatura_id);
+        
+        $asignacion = Asignacion::where('asignatura_id', $request->asignatura_id)
+            ->where('docente_id', $user->id)
+            ->where('periodo', $request->periodo)
+            ->first();
+
+        $info = [
+            'facultad' => 'FACULTAD DE CIENCIAS DE LA EDUCACIÓN', 
+            'carrera' => $asignatura->carrera,
+            'docente' => $user->name ?? $user->email, 
+            'periodo' => $request->periodo, 
+            'asignatura' => $asignatura->nombre,
+            'ciclo' => $asignatura->ciclo . ' - ' . ($asignacion->paralelo ?? 'A')
+        ];
+
+        // 2. Estudiantes
+        $estudiantes = Estudiante::where('carrera', $asignatura->carrera)
+            ->where('ciclo_actual', $asignatura->ciclo)
+            ->orderBy('apellidos')
+            ->get();
+
+        // 3. Planificaciones 
+        // CORRECCIÓN AQUÍ: Usamos 'detalles.habilidad' (Con punto)
+        $planes = Planificacion::with(['detalles.habilidad'])
+            ->where('asignatura_id', $request->asignatura_id)
+            ->where('docente_id', $user->id)
+            ->where('periodo_academico', $request->periodo)
+            ->get(); 
+
+        $reportes = [];
+
+        foreach ($planes as $plan) {
+            // Iteramos sobre los DETALLES, no sobre el plan directamente para sacar habilidades
+            foreach ($plan->detalles as $detalle) {
+                
+                $evaluaciones = Evaluacion::where('planificacion_id', $plan->id)
+                    ->where('habilidad_blanda_id', $detalle->habilidad_blanda_id)
+                    ->get();
+
+                // Estadísticas
+                $stats = [1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0];
+                foreach ($evaluaciones as $ev) {
+                    if (isset($stats[$ev->nivel])) {
+                        $stats[$ev->nivel]++;
+                    }
+                }
+
+                $listaEstudiantes = $estudiantes->map(function($est) use ($evaluaciones) {
+                    $nota = $evaluaciones->where('estudiante_id', $est->id)->first();
+                    $nivel = $nota ? $nota->nivel : 0;
+
+                    return [
+                        'nombre' => $est->apellidos . ' ' . $est->nombres,
+                        'n1' => $nivel == 1 ? 'X' : '',
+                        'n2' => $nivel == 2 ? 'X' : '',
+                        'n3' => $nivel == 3 ? 'X' : '',
+                        'n4' => $nivel == 4 ? 'X' : '',
+                        'n5' => $nivel == 5 ? 'X' : '',
+                    ];
+                });
+
+                $conclusion = $plan->observaciones ?? '';
+
+                $reportes[] = [
+                    'planificacion_id' => $plan->id . '_' . $detalle->habilidad_blanda_id, 
+                    'real_plan_id' => $plan->id, 
+                    // Accedemos a la habilidad a través del detalle
+                    'habilidad' => $detalle->habilidad ? $detalle->habilidad->nombre : 'Sin Nombre',
+                    'parcial_asignado' => (string)$plan->parcial,
+                    'conclusion' => $conclusion,
+                    'estadisticas' => $stats,
+                    'detalle_p1' => $plan->parcial == '1' ? $listaEstudiantes : [],
+                    'detalle_p2' => $plan->parcial == '2' ? $listaEstudiantes : []
+                ];
+            }
+        }
+
+        return response()->json([
+            'info' => $info,
+            'reportes' => $reportes
+        ]);
+    }
+
+    // 7. GUARDAR CONCLUSIÓN
+    public function guardarConclusion(Request $request)
+    {
+        $request->validate([
+            'planificacion_id' => 'required',
+            'conclusion' => 'nullable|string'
+        ]);
+
+        $parts = explode('_', $request->planificacion_id); 
+        $planIdReal = $parts[0]; 
+
+        $plan = Planificacion::find($planIdReal);
+        
+        if ($plan) {
+            $plan->observaciones = $request->conclusion;
+            $plan->save();
+            return response()->json(['message' => 'Guardado correctamente']);
+        }
+
+        return response()->json(['error' => 'Planificación no encontrada'], 404);
+    }
 }

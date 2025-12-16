@@ -1,46 +1,72 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
 import Swal from 'sweetalert2';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import CustomSelect from './ui/CustomSelect'; // <--- IMPORTACIÓN NUEVA
+import CustomSelect from './ui/CustomSelect'; 
 import { 
-    DocumentTextIcon, BookOpenIcon, 
-    ArrowDownTrayIcon, PrinterIcon, SparklesIcon, ChartBarIcon, UserGroupIcon
+    DocumentTextIcon, BookOpenIcon, CalendarDaysIcon,
+    PrinterIcon, SparklesIcon, ChartBarIcon, UserGroupIcon, ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 
 const ReportesDocente = () => {
-    const [asignaturas, setAsignaturas] = useState([]);
-    const [selectedAsignatura, setSelectedAsignatura] = useState('');
-    
-    // Data completa
+    const [asignacionesRaw, setAsignacionesRaw] = useState([]);
+    const [selectedMateriaId, setSelectedMateriaId] = useState('');
+    const [selectedPeriodo, setSelectedPeriodo] = useState('');
     const [dataCompleta, setDataCompleta] = useState(null); 
     const [conclusiones, setConclusiones] = useState({});
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        api.get('/docente/asignaturas').then(res => setAsignaturas(Array.isArray(res.data) ? res.data : []));
+        api.get('/docente/asignaturas').then(res => {
+            setAsignacionesRaw(Array.isArray(res.data) ? res.data : []);
+        });
     }, []);
 
     useEffect(() => {
-        if (selectedAsignatura) {
+        if (selectedMateriaId && selectedPeriodo) {
             cargarDatosReporte();
         } else {
             setDataCompleta(null);
         }
-    }, [selectedAsignatura]);
+    }, [selectedMateriaId, selectedPeriodo]);
+
+    const opcionesMaterias = useMemo(() => {
+        const unicas = [];
+        const map = new Map();
+        for (const item of asignacionesRaw) {
+            if(!map.has(item.id)) { 
+                map.set(item.id, true);
+                unicas.push({ value: item.id, label: item.nombre, subtext: item.carrera });
+            }
+        }
+        return unicas;
+    }, [asignacionesRaw]);
+
+    const opcionesPeriodos = useMemo(() => {
+        if (!selectedMateriaId) return [];
+        return asignacionesRaw
+            .filter(a => a.id === parseInt(selectedMateriaId)) 
+            .map(a => ({ value: a.periodo, label: a.periodo, subtext: `Paralelo ${a.paralelo}` }));
+    }, [asignacionesRaw, selectedMateriaId]);
 
     const cargarDatosReporte = async () => {
         setLoading(true);
         try {
-            const res = await api.post('/reportes/pdf-data', { asignatura_id: selectedAsignatura });
+            const res = await api.post('/reportes/pdf-data', { 
+                asignatura_id: selectedMateriaId, 
+                periodo: selectedPeriodo   
+            });
             setDataCompleta(res.data);
             const initialConclusiones = {};
-            res.data.reportes.forEach(r => { initialConclusiones[r.planificacion_id] = r.conclusion; });
+            if (res.data.reportes) {
+                res.data.reportes.forEach(r => { initialConclusiones[r.planificacion_id] = r.conclusion || ''; });
+            }
             setConclusiones(initialConclusiones);
         } catch (error) {
             console.error(error);
             setDataCompleta(null);
+            Swal.fire('Info', 'No se encontraron datos para este periodo.', 'info');
         } finally {
             setLoading(false);
         }
@@ -58,22 +84,25 @@ const ReportesDocente = () => {
         }
     };
 
-    // --- PDF ---
+    // ==========================================================
+    //   LÓGICA DEL PDF - CORREGIDA (Niveles por Porcentaje)
+    // ==========================================================
     const descargarPDFCompleto = () => {
-        if (!dataCompleta) return;
+        if (!dataCompleta || !dataCompleta.info) return;
         const doc = new jsPDF();
         const info = dataCompleta.info;
 
         const drawHeader = (doc) => {
             doc.setFontSize(14);
-            doc.setTextColor(40, 53, 147);
+            doc.setTextColor(40, 53, 147); 
             doc.text("UNIVERSIDAD ESTATAL DE BOLIVAR", 105, 15, { align: "center" });
             doc.setFontSize(10);
             doc.setTextColor(80);
-            doc.text(info.facultad, 105, 22, { align: "center" });
+            doc.text(info.facultad || 'FACULTAD', 105, 22, { align: "center" });
             doc.setTextColor(0);
         };
 
+        // --- PÁGINA 1: FICHA RESUMEN ---
         drawHeader(doc);
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
@@ -93,7 +122,7 @@ const ReportesDocente = () => {
         });
 
         const filasResumen = dataCompleta.reportes.map(r => {
-            const textoConclusion = conclusiones[r.planificacion_id] || r.conclusion || "Sin registro.";
+            const textoConclusion = conclusiones[r.planificacion_id] || "Sin observaciones.";
             return [
                 info.asignatura,
                 info.ciclo,
@@ -105,7 +134,7 @@ const ReportesDocente = () => {
 
         autoTable(doc, {
             startY: doc.lastAutoTable.finalY + 5,
-            head: [['Asignatura', 'Ciclo', 'Habilidad', 'N1', 'N2', 'N3', 'N4', 'N5', 'Conclusión']],
+            head: [['Asignatura', 'Ciclo', 'Habilidad', 'N1', 'N2', 'N3', 'N4', 'N5', 'Observación']],
             body: filasResumen,
             theme: 'grid',
             headStyles: { fillColor: [220, 230, 241], textColor: 0, fontSize: 8, halign: 'center', valign: 'middle' },
@@ -116,56 +145,102 @@ const ReportesDocente = () => {
         doc.line(14, 250, 80, 250);
         doc.setFontSize(10);
         doc.text("Firma del Docente", 14, 256);
-        doc.setFontSize(8);
-        doc.text("Adjunto: Evaluación realizada en cada parcial.", 14, 270);
 
+        // --- PÁGINAS INDIVIDUALES ---
         dataCompleta.reportes.forEach((reporte) => {
-            const notas = reporte.parcial_asignado === '1' ? reporte.detalle_p1 : reporte.detalle_p2;
-            const nombreParcial = reporte.parcial_asignado === '1' ? 'I' : 'II';
+            const estudiantesNotas = reporte.parcial_asignado === '1' ? reporte.detalle_p1 : reporte.detalle_p2;
+            const nombreParcial = reporte.parcial_asignado === '1' ? 'Primer Parcial' : 'Segundo Parcial';
 
-            doc.addPage();
-            doc.setFontSize(10);
-            doc.setTextColor(40, 53, 147);
-            doc.text("UNIVERSIDAD ESTATAL DE BOLIVAR", 14, 10);
-            doc.setTextColor(0);
+            if (estudiantesNotas && estudiantesNotas.length > 0) {
+                doc.addPage();
+                drawHeader(doc); 
 
-            autoTable(doc, {
-                startY: 15,
-                theme: 'plain',
-                body: [
-                    ['Carrera:', info.carrera, 'Periodo Académico:', info.periodo],
-                    ['Ciclo:', info.ciclo, 'Asignatura:', info.asignatura],
-                    ['Habilidad Blanda:', reporte.habilidad, 'Parcial:', nombreParcial]
-                ],
-                styles: { fontSize: 10, cellPadding: 1.5 },
-                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 }, 2: { fontStyle: 'bold', cellWidth: 35 } }
-            });
+                // 1. Cabecera Informativa
+                autoTable(doc, {
+                    startY: 30,
+                    theme: 'plain',
+                    body: [
+                        ['Carrera:', info.carrera, 'Periodo:', info.periodo],
+                        ['Ciclo:', info.ciclo, 'Asignatura:', info.asignatura],
+                        ['Habilidad:', reporte.habilidad, 'Parcial:', nombreParcial]
+                    ],
+                    styles: { fontSize: 10, cellPadding: 1.5 },
+                    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 25 }, 2: { fontStyle: 'bold', cellWidth: 25 } }
+                });
 
-            const cuerpoTabla = notas.map(est => [est.nombre, est.n1, est.n2, est.n3, est.n4, est.n5]);
+                // 2. CÁLCULOS DE RENDIMIENTO
+                const stats = reporte.estadisticas;
+                const totalEvaluados = Object.values(stats).reduce((a, b) => a + b, 0);
 
-            autoTable(doc, {
-                startY: doc.lastAutoTable.finalY + 5,
-                head: [['Estudiante', 'Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4', 'Nivel 5']],
-                body: cuerpoTabla,
-                theme: 'grid',
-                headStyles: { fillColor: [255, 255, 255], textColor: 0, lineWidth: 0.1, lineColor: 0, fontStyle: 'bold' },
-                styles: { fontSize: 9, cellPadding: 2, lineColor: 0, lineWidth: 0.1, halign: 'center', valign: 'middle' },
-                columnStyles: { 0: { halign: 'left', cellWidth: 80 } }
-            });
+                // Calcular promedio ponderado del curso
+                // Suma = (cant_n1 * 1) + (cant_n2 * 2) ...
+                const sumaPuntos = (stats[1]*1) + (stats[2]*2) + (stats[3]*3) + (stats[4]*4) + (stats[5]*5);
+                const promedioNivel = totalEvaluados > 0 ? (sumaPuntos / totalEvaluados) : 0;
+                
+                // Convertir a porcentaje (Promedio / 5 * 100)
+                const porcentajeGlobal = (promedioNivel / 5) * 100;
+
+                // 3. TABLA DE ESTADÍSTICAS POR NIVEL (Header ajustado al 20%, 40%...)
+                autoTable(doc, {
+                    startY: doc.lastAutoTable.finalY + 8,
+                    head: [[
+                        'Nivel 1 (20%)', 
+                        'Nivel 2 (40%)', 
+                        'Nivel 3 (60%)', 
+                        'Nivel 4 (80%)', 
+                        'Nivel 5 (100%)',
+                        'TOTAL EST.',
+                        'RENDIMIENTO GLOBAL'
+                    ]],
+                    body: [[
+                        stats[1], 
+                        stats[2], 
+                        stats[3], 
+                        stats[4], 
+                        stats[5],
+                        totalEvaluados,
+                        porcentajeGlobal.toFixed(2) + '%' // El total sobre 100% que pediste
+                    ]],
+                    theme: 'grid',
+                    headStyles: { 
+                        fillColor: [230, 230, 230], 
+                        textColor: 0, 
+                        fontStyle: 'bold', 
+                        halign: 'center',
+                        fontSize: 9
+                    },
+                    bodyStyles: { 
+                        fontSize: 10, 
+                        halign: 'center', 
+                        cellPadding: 3 
+                    },
+                    // Colorear la columna final
+                    columnStyles: { 
+                        6: { fontStyle: 'bold', textColor: [40, 53, 147], fillColor: [240, 245, 255] }
+                    }
+                });
+
+                // 4. LISTA DE ESTUDIANTES (DISEÑO ORIGINAL)
+                const cuerpoTabla = estudiantesNotas.map(est => [est.nombre, est.n1, est.n2, est.n3, est.n4, est.n5]);
+
+                autoTable(doc, {
+                    startY: doc.lastAutoTable.finalY + 5,
+                    head: [['Nómina de Estudiantes', 'Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4', 'Nivel 5']],
+                    body: cuerpoTabla,
+                    theme: 'grid',
+                    headStyles: { fillColor: [50, 50, 50], textColor: 255, fontStyle: 'bold', halign: 'center' },
+                    bodyStyles: { fontSize: 9, cellPadding: 1.5, halign: 'center' },
+                    columnStyles: { 0: { halign: 'left', cellWidth: 80 } } 
+                });
+            }
         });
-
-        doc.save(`Ficha_Completa_${info.asignatura}.pdf`);
+        
+        const filename = `Reporte_${info.asignatura}_${info.periodo.replace(/[\/\\]/g, '-')}.pdf`;
+        doc.save(filename);
     };
 
-    // --- PREPARAR OPCIONES PARA EL SELECTOR ---
-    const opcionesAsignaturas = asignaturas.map(a => ({
-        value: a.id,
-        label: `${a.nombre}`,
-        subtext: `${a.carrera} - Paralelo ${a.paralelo}`
-    }));
-
     return (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-fade-in pb-20">
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900">Reportes por Asignatura</h2>
@@ -178,16 +253,28 @@ const ReportesDocente = () => {
                 )}
             </div>
 
-            {/* SELECCIÓN ELEGANTE */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-6">
                 <CustomSelect
-                    label="Selecciona la Asignatura"
+                    label="1. Selecciona la Asignatura"
                     icon={BookOpenIcon}
                     placeholder="-- Buscar Materia --"
-                    options={opcionesAsignaturas}
-                    value={selectedAsignatura}
-                    onChange={setSelectedAsignatura}
+                    options={opcionesMaterias}
+                    value={selectedMateriaId}
+                    onChange={(val) => {
+                        setSelectedMateriaId(val);
+                        setSelectedPeriodo(''); 
+                    }}
                 />
+                <div className={`transition-all duration-300 ${!selectedMateriaId ? 'opacity-50 pointer-events-none grayscale' : 'opacity-100'}`}>
+                    <CustomSelect
+                        label="2. Selecciona el Periodo"
+                        icon={CalendarDaysIcon}
+                        placeholder={opcionesPeriodos.length === 0 ? "Sin periodos" : "-- Seleccionar Periodo --"}
+                        options={opcionesPeriodos}
+                        value={selectedPeriodo}
+                        onChange={setSelectedPeriodo}
+                    />
+                </div>
             </div>
 
             {loading && (
@@ -197,7 +284,7 @@ const ReportesDocente = () => {
                 </div>
             )}
 
-            {!loading && dataCompleta && dataCompleta.reportes.length > 0 ? (
+            {!loading && dataCompleta && dataCompleta.reportes.length > 0 && (
                 <div className="grid grid-cols-1 gap-6">
                     {dataCompleta.reportes.map((reporte) => {
                         const totalEvaluados = Object.values(reporte.estadisticas).reduce((a,b)=>a+b,0);
@@ -219,39 +306,35 @@ const ReportesDocente = () => {
                                     </div>
                                     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${totalEvaluados > 0 ? 'bg-green-50 border-green-100 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
                                         <UserGroupIcon className="h-5 w-5"/>
-                                        <span className="text-sm font-bold">
-                                            Evaluados: {totalEvaluados}
-                                        </span>
+                                        <span className="text-sm font-bold">Evaluados: {totalEvaluados}</span>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    {/* GRÁFICO */}
                                     <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100">
                                         <h4 className="text-xs font-bold text-gray-400 uppercase mb-4 flex items-center gap-2">
-                                            <ChartBarIcon className="h-4 w-4"/> Distribución
+                                            <ChartBarIcon className="h-4 w-4"/> Estudiantes por Nivel
                                         </h4>
-                                        <div className="flex items-end justify-between h-28 gap-3 px-2">
+                                        <div className="flex items-end justify-between h-32 gap-3 px-2 pt-4">
                                             {[1, 2, 3, 4, 5].map(nivel => (
                                                 <div key={nivel} className="flex flex-col items-center w-full group relative h-full justify-end">
-                                                    <div className="text-[10px] font-bold text-blue-600 mb-1 opacity-0 group-hover:opacity-100 transition absolute -top-4 bg-white px-1 rounded shadow-sm border">
+                                                    <div className="text-xs font-extrabold text-blue-600 mb-1.5 text-center w-full">
                                                         {reporte.estadisticas[nivel]}
                                                     </div>
-                                                    <div className="w-full bg-white rounded-t-md h-full relative border-b border-gray-200 overflow-hidden">
+                                                    <div className="w-full bg-white rounded-t-md h-full relative border-b border-gray-200 overflow-hidden shadow-sm">
                                                         <div 
-                                                            className="absolute bottom-0 w-full bg-blue-500 rounded-t-md transition-all duration-1000 ease-out"
+                                                            className="absolute bottom-0 w-full bg-blue-500 rounded-t-md transition-all duration-1000 ease-out hover:bg-blue-600"
                                                             style={{ height: `${(reporte.estadisticas[nivel] / maxVal) * 100}%` }}
                                                         ></div>
                                                     </div>
-                                                    <div className="mt-2 text-[10px] font-bold text-gray-400">N{nivel}</div>
+                                                    <div className="mt-2 text-[10px] font-bold text-gray-500">Nivel {nivel}</div>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
 
-                                    {/* CONCLUSIÓN */}
                                     <div className="flex flex-col h-full">
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Conclusión del Progreso</label>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Observación / Conclusión</label>
                                         <div className="flex-1 relative">
                                             <textarea 
                                                 rows="4"
@@ -266,7 +349,7 @@ const ReportesDocente = () => {
                                                 onClick={() => guardarConclusion(reporte.planificacion_id)}
                                                 className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center justify-end gap-1 w-full uppercase tracking-wide transition"
                                             >
-                                                <ArrowDownTrayIcon className="h-4 w-4"/> Guardar
+                                                <ArrowDownTrayIcon className="h-4 w-4"/> Guardar Observación
                                             </button>
                                         </div>
                                     </div>
@@ -275,14 +358,14 @@ const ReportesDocente = () => {
                         );
                     })}
                 </div>
-            ) : (
-                !loading && selectedAsignatura && (
-                    <div className="h-64 flex flex-col items-center justify-center bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 text-gray-400 animate-fade-in">
-                        <DocumentTextIcon className="h-14 w-14 mb-3 opacity-20"/>
-                        <p className="font-medium">Sin datos disponibles</p>
-                        <p className="text-sm">No se encontraron habilidades planificadas para esta materia.</p>
-                    </div>
-                )
+            )}
+            
+            {!loading && dataCompleta && dataCompleta.reportes.length === 0 && selectedPeriodo && (
+                <div className="h-64 flex flex-col items-center justify-center bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 text-gray-400 animate-fade-in">
+                    <DocumentTextIcon className="h-14 w-14 mb-3 opacity-20"/>
+                    <p className="font-medium">Sin datos disponibles</p>
+                    <p className="text-sm">No hay reportes para este periodo.</p>
+                </div>
             )}
         </div>
     );

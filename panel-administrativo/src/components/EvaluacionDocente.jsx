@@ -1,27 +1,31 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import Swal from 'sweetalert2';
-import { RUBRICAS } from '../data/rubricas';
-import CustomSelect from './ui/CustomSelect'; // <--- IMPORTANTE
+import { RUBRICAS } from '../data/rubricas'; 
+import CustomSelect from './ui/CustomSelect';
 import { 
-    BookOpenIcon, ClipboardDocumentCheckIcon, UserGroupIcon, 
+    BookOpenIcon, UserGroupIcon, 
     CheckCircleIcon, ArrowPathIcon, InformationCircleIcon,
-    ClockIcon // Icono para parcial
+    ClockIcon, ListBulletIcon, StarIcon, CalendarDaysIcon // Icono nuevo
 } from '@heroicons/react/24/outline';
 
 const EvaluacionDocente = () => {
     // --- ESTADOS ---
     const [asignaturas, setAsignaturas] = useState([]);
-    const [todasLasHabilidades, setTodasLasHabilidades] = useState([]); 
-    const [habilidadesFiltradas, setHabilidadesFiltradas] = useState([]);
+    const [habilidadesPlanificadas, setHabilidadesPlanificadas] = useState([]);
+    
+    // Estados de datos
+    const [actividadesContexto, setActividadesContexto] = useState({}); 
     const [estudiantes, setEstudiantes] = useState([]);
     const [loading, setLoading] = useState(false);
     const [mostrarRubrica, setMostrarRubrica] = useState(false);
+    const [actividadesRubrica, setActividadesRubrica] = useState([]); 
 
     // Selecciones
     const [selectedAsignatura, setSelectedAsignatura] = useState('');
-    const [selectedPlanificacion, setSelectedPlanificacion] = useState('');
     const [selectedParcial, setSelectedParcial] = useState('1');
+    const [periodoActual, setPeriodoActual] = useState(''); // Estado para el input de periodo
+    const [habilidadActiva, setHabilidadActiva] = useState(null); 
 
     // --- CARGAS INICIALES ---
     useEffect(() => {
@@ -29,54 +33,108 @@ const EvaluacionDocente = () => {
             .then(res => setAsignaturas(Array.isArray(res.data) ? res.data : []));
     }, []);
 
+    // --- DETECTAR PERIODO AL CAMBIAR ASIGNATURA ---
     useEffect(() => {
         if (selectedAsignatura) {
-            setTodasLasHabilidades([]);
-            setHabilidadesFiltradas([]);
-            setSelectedPlanificacion('');
-            setEstudiantes([]); 
-            
-            api.get(`/docente/habilidades/${selectedAsignatura}`)
-                .then(res => setTodasLasHabilidades(Array.isArray(res.data) ? res.data : []));
+            // Buscamos la asignatura completa en el array para sacar su periodo
+            const asignaturaEncontrada = asignaturas.find(a => a.value === selectedAsignatura || a.id === selectedAsignatura);
+            if (asignaturaEncontrada) {
+                setPeriodoActual(asignaturaEncontrada.periodo);
+            }
+        } else {
+            setPeriodoActual('');
         }
-    }, [selectedAsignatura]);
+    }, [selectedAsignatura, asignaturas]);
 
+    // --- CARGAR PLANIFICACIÓN CUANDO CAMBIA MATERIA O PARCIAL ---
     useEffect(() => {
-        const filtradas = todasLasHabilidades.filter(h => h.parcial === selectedParcial);
-        setHabilidadesFiltradas(filtradas);
-        
-        // Auto-selección si solo hay una
-        if (filtradas.length === 1) setSelectedPlanificacion(filtradas[0].planificacion_id);
-        else setSelectedPlanificacion('');
-        
-        setEstudiantes([]);
-        setMostrarRubrica(true);
-    }, [selectedParcial, todasLasHabilidades]);
+        if (selectedAsignatura && selectedParcial) {
+            cargarPlanificacion();
+        }
+    }, [selectedAsignatura, selectedParcial]);
 
-    // --- LÓGICA RÚBRICA ---
-    const getHabilidadNombre = () => {
-        const hab = todasLasHabilidades.find(h => h.planificacion_id == selectedPlanificacion);
-        return hab ? hab.habilidad_nombre : '';
+    // --- CARGAR ESTUDIANTES ---
+    useEffect(() => {
+        if (selectedAsignatura && habilidadActiva) {
+            cargarEstudiantesYNotas();
+        }
+    }, [habilidadActiva]);
+
+    // 1. Cargar Planificación (Izquierda)
+    const cargarPlanificacion = async () => {
+        setLoading(true);
+        setHabilidadesPlanificadas([]);
+        setActividadesContexto({});
+        setHabilidadActiva(null);
+        setEstudiantes([]);
+        setActividadesRubrica([]);
+        
+        try {
+            const res = await api.get(`/planificaciones/verificar/${selectedAsignatura}?parcial=${selectedParcial}`);
+            
+            if (res.data.tiene_asignacion && res.data.es_edicion) {
+                const guardadas = res.data.actividades_guardadas || {};
+                const habilidadesListas = res.data.habilidades.filter(h => guardadas[h.id] && guardadas[h.id].length > 0);
+                
+                setHabilidadesPlanificadas(habilidadesListas);
+                setActividadesContexto(guardadas);
+
+                if (habilidadesListas.length > 0) {
+                    setHabilidadActiva(habilidadesListas[0].id);
+                }
+            } else {
+                Swal.fire('Atención', 'No has realizado la planificación de actividades para este parcial.', 'warning');
+            }
+        } catch (error) {
+            console.error(error);
+            Swal.fire('Error', 'No se pudo cargar la planificación.', 'error');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const rubricaActual = RUBRICAS[getHabilidadNombre()] || {};
-
-    // --- CARGAR Y GUARDAR ---
-    const cargarRubrica = async () => {
-        if (!selectedAsignatura || !selectedPlanificacion) return Swal.fire('Atención', 'Falta información.', 'warning');
+    // 2. Cargar Estudiantes y Notas
+    const cargarEstudiantesYNotas = async () => {
         setLoading(true);
         try {
             const res = await api.post('/docente/rubrica', {
                 asignatura_id: selectedAsignatura,
-                planificacion_id: selectedPlanificacion,
+                habilidad_blanda_id: habilidadActiva,
                 parcial: selectedParcial
             });
-            if (res.data.length === 0) Swal.fire('Info', 'No hay estudiantes en este curso.', 'info');
-            setEstudiantes(res.data);
-        } catch (error) { Swal.fire('Error', 'Error al cargar lista.', 'error'); } 
-        finally { setLoading(false); }
+            
+            if (res.data && res.data.estudiantes) {
+                setEstudiantes(res.data.estudiantes);
+                setActividadesRubrica(res.data.actividades || []);
+                
+                // Opcional: Si el backend devuelve un periodo diferente, actualizamos
+                if (res.data.periodo) setPeriodoActual(res.data.periodo);
+
+                if (res.data.estudiantes.length === 0) Swal.fire('Info', 'No hay estudiantes inscritos.', 'info');
+                setMostrarRubrica(true);
+            } else {
+                setEstudiantes([]);
+            }
+
+        } catch (error) {
+            console.error(error);
+            Swal.fire('Error', 'Error al cargar estudiantes y rúbrica.', 'error');
+        } finally {
+            setLoading(false);
+        }
     };
 
+    // --- LÓGICA RÚBRICA ---
+    const getNombreHabilidadActiva = () => {
+        const hab = habilidadesPlanificadas.find(h => h.id === habilidadActiva);
+        return hab ? hab.nombre : '';
+    };
+
+    const nombreNormalizado = getNombreHabilidadActiva().trim();
+    const keyRubrica = Object.keys(RUBRICAS).find(k => k.toLowerCase() === nombreNormalizado.toLowerCase()) || nombreNormalizado;
+    const rubricaActual = RUBRICAS[keyRubrica] || {};
+
+    // --- MANEJO DE NOTAS ---
     const handleNotaChange = (studentId, nuevoNivel) => {
         setEstudiantes(prev => prev.map(est => 
             est.estudiante_id === studentId ? { ...est, nivel: parseInt(nuevoNivel) } : est
@@ -85,23 +143,30 @@ const EvaluacionDocente = () => {
 
     const handleGuardar = async () => {
         try {
-            const notas = estudiantes.map(e => ({ estudiante_id: e.estudiante_id, nivel: e.nivel }));
+            const notas = estudiantes
+                .filter(e => e.nivel)
+                .map(e => ({ estudiante_id: e.estudiante_id, nivel: e.nivel }));
+
+            if(notas.length === 0) return Swal.fire('Aviso', 'No has calificado a nadie.', 'warning');
+
             await api.post('/docente/guardar-notas', {
-                planificacion_id: selectedPlanificacion,
+                asignatura_id: selectedAsignatura,
+                habilidad_blanda_id: habilidadActiva,
                 parcial: selectedParcial,
                 notas
             });
-            Swal.fire('¡Guardado!', 'Calificaciones registradas.', 'success');
+            Swal.fire('¡Guardado!', `Calificaciones registradas correctamente.`, 'success');
         } catch (error) { Swal.fire('Error', 'No se pudo guardar.', 'error'); }
     };
 
     const pendientes = estudiantes.filter(e => !e.nivel).length;
 
-    // --- PREPARACIÓN DE OPCIONES PARA CUSTOM SELECT ---
+    // --- OPCIONES UI ---
     const opcionesAsignaturas = asignaturas.map(a => ({
         value: a.id,
         label: a.nombre,
-        subtext: `${a.carrera} (${a.paralelo})`
+        subtext: `${a.carrera} (${a.paralelo})`,
+        periodo: a.periodo // Guardamos esto para usarlo en la lógica
     }));
 
     const opcionesParciales = [
@@ -109,98 +174,126 @@ const EvaluacionDocente = () => {
         { value: '2', label: 'Segundo Parcial' }
     ];
 
-    const opcionesHabilidades = habilidadesFiltradas.map(h => ({
-        value: h.planificacion_id,
-        label: h.habilidad_nombre
-    }));
+    // Opción única para el select de periodo (ya que viene dado por la materia)
+    const opcionesPeriodo = periodoActual ? [{ value: periodoActual, label: periodoActual }] : [];
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            {/* CABECERA */}
+        <div className="space-y-6 animate-fade-in pb-20">
+            {/* CABECERA (LIMPIA, SIN PERIODO) */}
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Calificar Habilidades</h2>
-                    <p className="text-gray-500 text-sm mt-1">Evalúa el desempeño según la rúbrica institucional.</p>
+                    <h2 className="text-2xl font-bold text-gray-900">Evaluación Docente</h2>
+                    <p className="text-gray-500 text-sm mt-1">Califica el desempeño en base a las actividades planificadas.</p>
                 </div>
                 {estudiantes.length > 0 && (
-                    <button onClick={cargarRubrica} className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1">
-                        <ArrowPathIcon className="h-4 w-4"/> Recargar
+                    <button onClick={cargarEstudiantesYNotas} className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1 bg-white px-3 py-1 rounded border border-blue-200">
+                        <ArrowPathIcon className="h-4 w-4"/> Refrescar Lista
                     </button>
                 )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 
-                {/* --- PANEL IZQUIERDO --- */}
+                {/* --- PANEL IZQUIERDO: CONFIGURACIÓN Y HABILIDADES --- */}
                 <div className="lg:col-span-4 space-y-6">
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
-                        <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                            <BookOpenIcon className="h-5 w-5 text-blue-600"/> Configuración
-                        </h3>
+                    
+                    {/* SELECTORES */}
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                         
-                        <div className="space-y-4">
-                            {/* 1. Selector Materia */}
+                        {/* 1. MATERIA */}
+                        <CustomSelect 
+                            label="1. Materia"
+                            options={opcionesAsignaturas}
+                            value={selectedAsignatura}
+                            onChange={setSelectedAsignatura}
+                            placeholder="-- Seleccionar --"
+                        />
+
+                        {/* 2. PARCIAL */}
+                        <div className={!selectedAsignatura ? 'opacity-50 pointer-events-none' : ''}>
                             <CustomSelect 
-                                label="Materia"
-                                options={opcionesAsignaturas}
-                                value={selectedAsignatura}
-                                onChange={setSelectedAsignatura}
-                                placeholder="-- Seleccionar --"
+                                label="2. Parcial"
+                                icon={ClockIcon}
+                                options={opcionesParciales}
+                                value={selectedParcial}
+                                onChange={setSelectedParcial}
                             />
+                        </div>
 
-                            {/* 2. Selector Parcial */}
-                            <div className={!selectedAsignatura ? 'opacity-50 pointer-events-none' : ''}>
-                                <CustomSelect 
-                                    label="Parcial"
-                                    icon={ClockIcon}
-                                    options={opcionesParciales}
-                                    value={selectedParcial}
-                                    onChange={setSelectedParcial}
-                                    disabled={!selectedAsignatura}
-                                />
-                            </div>
-
-                            {/* 3. Selector Habilidad */}
-                            <div className={!selectedAsignatura ? 'opacity-50 pointer-events-none' : ''}>
-                                <CustomSelect 
-                                    label="Habilidad"
-                                    icon={ClipboardDocumentCheckIcon}
-                                    options={opcionesHabilidades}
-                                    value={selectedPlanificacion}
-                                    onChange={setSelectedPlanificacion}
-                                    placeholder={habilidadesFiltradas.length > 0 ? "-- Seleccionar --" : "-- Sin asignar --"}
-                                    disabled={!selectedAsignatura}
-                                />
-                                {selectedAsignatura && habilidadesFiltradas.length === 0 && (
-                                    <p className="text-xs text-red-500 mt-2 ml-1">* Falta planificación para este parcial.</p>
-                                )}
-                            </div>
-
-                            <button onClick={cargarRubrica} disabled={!selectedPlanificacion || loading}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-md transition disabled:opacity-50 mt-2">
-                                {loading ? 'Cargando...' : 'Cargar Estudiantes'}
-                            </button>
+                        {/* 3. PERIODO ACADÉMICO (MOVIDO AQUÍ) */}
+                        <div className={!selectedAsignatura ? 'opacity-50 pointer-events-none' : ''}>
+                            <CustomSelect 
+                                label="3. Periodo Académico"
+                                icon={CalendarDaysIcon}
+                                options={opcionesPeriodo} // Solo muestra el periodo actual de la materia
+                                value={periodoActual}
+                                onChange={() => {}} // No hace nada porque es informativo/fijo
+                                placeholder={periodoActual || "--"}
+                            />
                         </div>
                     </div>
 
-                    {/* RÚBRICA FLOTANTE (Solo si hay habilidad) */}
-                    {selectedPlanificacion && (
-                        <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm animate-fade-in">
+                    {/* LISTA DE HABILIDADES PLANIFICADAS (TABS) */}
+                    {habilidadesPlanificadas.length > 0 && (
+                        <div className="space-y-2">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase px-1">4. Selecciona Habilidad</h3>
+                            {habilidadesPlanificadas.map(hab => (
+                                <button
+                                    key={hab.id}
+                                    onClick={() => setHabilidadActiva(hab.id)}
+                                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-between group ${
+                                        habilidadActiva === hab.id 
+                                        ? 'bg-blue-600 text-white shadow-md shadow-blue-200 ring-2 ring-white ring-offset-2 ring-offset-blue-100' 
+                                        : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 hover:border-blue-300'
+                                    }`}
+                                >
+                                    {hab.nombre}
+                                    {habilidadActiva === hab.id && <StarIcon className="h-4 w-4 text-white"/>}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* CONTEXTO DE ACTIVIDADES (CAJA AMARILLA) */}
+                    {habilidadActiva && (
+                        <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 animate-fade-in">
+                            <h4 className="text-sm font-bold text-amber-800 flex items-center gap-2 mb-2">
+                                <ListBulletIcon className="h-5 w-5"/> Actividades a Evaluar:
+                            </h4>
+                            <ul className="list-disc list-inside text-xs text-amber-900/80 space-y-1 ml-1 font-medium">
+                                {actividadesRubrica.length > 0 ? (
+                                    actividadesRubrica.map((act, idx) => (
+                                        <li key={idx}>{act.descripcion || act}</li>
+                                    ))
+                                ) : (
+                                    (actividadesContexto[habilidadActiva] || []).map((act, idx) => (
+                                        <li key={idx}>{act}</li>
+                                    ))
+                                )}
+                            </ul>
+                        </div>
+                    )}
+                    
+                    {/* (El resto del código, Guía de Rúbrica y Tabla, sigue igual) */}
+                    {/* ... */}
+                    {/* RÚBRICA FLOTANTE */}
+                    {habilidadActiva && (
+                        <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm">
                             <div className="flex justify-between items-center cursor-pointer" onClick={() => setMostrarRubrica(!mostrarRubrica)}>
                                 <h4 className="text-sm font-bold text-blue-800 flex items-center gap-2">
                                     <InformationCircleIcon className="h-5 w-5"/>
-                                    Rúbrica: {getHabilidadNombre()}
+                                    Guía de Rúbrica
                                 </h4>
                                 <span className="text-blue-500 text-xs">{mostrarRubrica ? 'Ocultar ▲' : 'Ver ▼'}</span>
                             </div>
                             {mostrarRubrica && (
-                                <div className="mt-3 space-y-3 text-xs text-blue-900 animate-fade-in">
+                                <div className="mt-3 space-y-2 text-[11px] text-blue-900 animate-fade-in">
                                     {[1, 2, 3, 4, 5].map(nivel => (
-                                        <div key={nivel} className="flex gap-2 items-start">
-                                            <span className="font-bold bg-white w-5 h-5 flex items-center justify-center rounded-full border border-blue-200 shrink-0 mt-0.5">
+                                        <div key={nivel} className="flex gap-2 items-start p-1.5 rounded hover:bg-blue-100/50">
+                                            <span className="font-bold bg-white w-5 h-5 flex items-center justify-center rounded-full border border-blue-200 shrink-0 text-blue-600">
                                                 {nivel}
                                             </span>
-                                            <p className="leading-tight">{rubricaActual[nivel] || "Descripción no disponible."}</p>
+                                            <p className="leading-tight opacity-90">{rubricaActual[nivel] || "Criterio genérico."}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -209,78 +302,63 @@ const EvaluacionDocente = () => {
                     )}
                 </div>
 
-                {/* --- PANEL DERECHO: TABLA ALINEADA --- */}
+                {/* --- PANEL DERECHO: TABLA DE CALIFICACIÓN --- */}
                 <div className="lg:col-span-8">
-                    {estudiantes.length > 0 ? (
+                    {habilidadActiva ? (
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full animate-fade-in">
-                            
-                            {/* ENCABEZADO */}
-                            <div className="p-4 bg-gray-50 border-b border-gray-200 grid grid-cols-12 gap-4 text-xs font-bold text-gray-500 uppercase items-center">
+                            <div className="p-4 bg-gray-50 border-b border-gray-200 grid grid-cols-12 gap-4 text-xs font-bold text-gray-500 uppercase items-center sticky top-0 z-10">
                                 <div className="col-span-4 pl-2">Estudiante</div>
                                 <div className="col-span-8 grid grid-cols-5">
-                                    <div className="flex justify-center text-center">Nivel 1</div>
-                                    <div className="flex justify-center text-center">Nivel 2</div>
-                                    <div className="flex justify-center text-center">Nivel 3</div>
-                                    <div className="flex justify-center text-center">Nivel 4</div>
-                                    <div className="flex justify-center text-center">Nivel 5</div>
+                                    {[1, 2, 3, 4, 5].map(n => <div key={n} className="text-center">Nivel {n}</div>)}
                                 </div>
                             </div>
-
-                            {/* CUERPO */}
-                            <div className="flex-1 overflow-y-auto max-h-[600px]">
-                                {estudiantes.map((est) => (
-                                    <div key={est.estudiante_id} className={`grid grid-cols-12 gap-4 p-4 border-b border-gray-50 items-center transition ${est.nivel ? 'bg-blue-50/40' : 'hover:bg-gray-50'}`}>
-                                        
-                                        <div className="col-span-4 font-medium text-sm text-gray-800 truncate pl-2">
-                                            {est.nombres}
-                                        </div>
-                                        
-                                        <div className="col-span-8 grid grid-cols-5 items-center">
-                                            {[1, 2, 3, 4, 5].map((nivel) => (
-                                                <div key={nivel} className="flex justify-center">
-                                                    <label className="cursor-pointer relative group">
-                                                        <input 
-                                                            type="radio" 
-                                                            name={`nivel-${est.estudiante_id}`} 
-                                                            className="peer sr-only"
-                                                            checked={est.nivel === nivel}
-                                                            onChange={() => handleNotaChange(est.estudiante_id, nivel)}
-                                                        />
-                                                        <div className={`
-                                                            w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200
-                                                            ${est.nivel === nivel 
-                                                                ? 'bg-blue-600 text-white scale-110 shadow-md ring-2 ring-blue-200' 
-                                                                : 'bg-white text-gray-400 border border-gray-200 hover:border-blue-400 hover:text-blue-500'}
-                                                        `}>
+                            <div className="flex-1 overflow-y-auto max-h-[600px] bg-white">
+                                {loading ? (
+                                    <div className="p-12 text-center text-gray-400">Cargando nómina y rúbrica...</div>
+                                ) : estudiantes.length === 0 ? (
+                                    <div className="p-12 text-center text-gray-400">No hay estudiantes cargados para este curso.</div>
+                                ) : (
+                                    estudiantes.map((est) => (
+                                        <div key={est.estudiante_id} className={`grid grid-cols-12 gap-4 p-3 border-b border-gray-50 items-center transition ${est.nivel ? 'bg-blue-50/30' : 'hover:bg-gray-50'}`}>
+                                            <div className="col-span-4 font-medium text-sm text-gray-800 truncate pl-2">
+                                                {est.nombres}
+                                            </div>
+                                            <div className="col-span-8 grid grid-cols-5 items-center">
+                                                {[1, 2, 3, 4, 5].map((nivel) => (
+                                                    <div key={nivel} className="flex justify-center">
+                                                        <button
+                                                            onClick={() => handleNotaChange(est.estudiante_id, nivel)}
+                                                            className={`
+                                                                w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold transition-all duration-200
+                                                                ${est.nivel === nivel 
+                                                                    ? 'bg-blue-600 text-white scale-110 shadow-md ring-2 ring-blue-100' 
+                                                                    : 'bg-white text-gray-300 border border-gray-100 hover:border-blue-300 hover:text-blue-500 hover:bg-gray-50'}
+                                                            `}
+                                                            title={`Asignar Nivel ${nivel}`}
+                                                        >
                                                             {nivel}
-                                                        </div>
-                                                        <div className="absolute bottom-full mb-2 w-48 bg-gray-800 text-white text-[10px] p-2 rounded hidden group-hover:block z-20 pointer-events-none text-center shadow-xl left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            {rubricaActual[nivel] || "Nivel " + nivel}
-                                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
-                                                        </div>
-                                                    </label>
-                                                </div>
-                                            ))}
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))
+                                )}
                             </div>
-
-                            {/* FOOTER */}
-                            <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+                            <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center sticky bottom-0">
                                 <span className="text-xs text-gray-500 font-medium">
-                                    {pendientes > 0 ? `Faltan ${pendientes} estudiantes` : '¡Todos calificados!'}
+                                    {pendientes > 0 ? `Faltan ${pendientes} por calificar` : '¡Completo!'}
                                 </span>
-                                <button onClick={handleGuardar} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition transform hover:scale-105">
-                                    <CheckCircleIcon className="h-6 w-6"/> Guardar
+                                <button onClick={handleGuardar} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-8 rounded-xl shadow-lg transition transform hover:scale-105 active:scale-95">
+                                    <CheckCircleIcon className="h-5 w-5"/> Guardar Notas
                                 </button>
                             </div>
                         </div>
                     ) : (
                         <div className="h-full min-h-[400px] flex flex-col items-center justify-center bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 text-gray-400">
                             <UserGroupIcon className="h-16 w-16 mb-4 opacity-20"/>
-                            <p className="text-lg font-medium">Lista de Estudiantes</p>
-                            <p className="text-sm">Selecciona una materia y haz clic en "Cargar Estudiantes".</p>
+                            <p className="text-lg font-medium">Selecciona una Habilidad</p>
+                            <p className="text-sm">Para ver la lista de estudiantes y calificar.</p>
                         </div>
                     )}
                 </div>

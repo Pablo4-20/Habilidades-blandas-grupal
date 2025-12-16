@@ -11,9 +11,10 @@ class Estudiante extends Model
 
     // ESTA ES LA PARTE QUE FALTA: Definir qué campos se pueden guardar
     protected $fillable = [
+        'cedula',
         'nombres',
         'apellidos',
-        'email', // <--- AGREGA ESTO
+        'email', 
         'carrera',
         'ciclo_actual',
     ];

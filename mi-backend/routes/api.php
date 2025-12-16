@@ -9,10 +9,21 @@ use App\Http\Controllers\Api\EstudianteController;
 use App\Http\Controllers\Api\HabilidadBlandaController;
 use App\Http\Controllers\Api\AsignaturaController;
 use App\Http\Controllers\Api\AsignacionController;
+use App\Http\Controllers\Api\CoordinadorController;
 use App\Http\Controllers\Api\DocenteController;
 use App\Http\Controllers\Api\PlanificacionController; // Asegúrate de tener este
 use App\Http\Controllers\Api\ReporteController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\PeriodoAcademicoController;
+
+
+Route::middleware('auth:sanctum')->group(function () {
+    // ... tus otras rutas ...
+
+    // Rutas para el Coordinador
+    Route::get('/reportes/filtros', [CoordinadorController::class, 'filtrosReporte']);
+    Route::get('/reportes/general', [CoordinadorController::class, 'reporteGeneral']);
+});
 
 // 1. LOGIN (Público)
 Route::post('/login', [AuthController::class, 'login']);
@@ -28,6 +39,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'index']);
 
     // --- ADMINISTRADOR ---
+
+    // Periodos Académicos
+    Route::get('/periodos', [PeriodoAcademicoController::class, 'index']);
+    Route::post('/periodos', [PeriodoAcademicoController::class, 'store']);
+    Route::put('/periodos/{id}', [PeriodoAcademicoController::class, 'update']);
+    Route::put('/periodos/{id}/estado', [PeriodoAcademicoController::class, 'toggleEstado']);
+    Route::delete('/periodos/{id}', [PeriodoAcademicoController::class, 'destroy']);
+    
+
+    Route::get('/periodos/activos', [PeriodoAcademicoController::class, 'activos']);
+
     Route::apiResource('/users', UserController::class);
     Route::post('/users/import', [UserController::class, 'import']);
     
@@ -44,24 +66,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/asignaciones/auxiliares', [AsignacionController::class, 'datosAuxiliares']);
     Route::apiResource('/asignaciones', AsignacionController::class);
 
-    // --- DOCENTE (Aquí estaba el fallo, ahora están protegidas) ---
+    // --- DOCENTE  ---
     Route::get('/docente/asignaturas', [DocenteController::class, 'misAsignaturas']);
     Route::get('/docente/estudiantes/{asignatura}', [DocenteController::class, 'verEstudiantes']);
     Route::get('/docente/habilidades/{asignatura}', [DocenteController::class, 'misHabilidades']);
 
 
     
-
-    // Planificación (Guardar la habilidad seleccionada)
-    Route::post('/planificaciones', [PlanificacionController::class, 'store']);
-    
+Route::get('/planificaciones/verificar/{asignatura_id}', [App\Http\Controllers\Api\PlanificacionController::class, 'verificar']);
+    Route::post('/planificaciones', [App\Http\Controllers\Api\PlanificacionController::class, 'store']);
+   
     // Evaluación
-    Route::post('/docente/rubrica', [DocenteController::class, 'obtenerRubrica']);
+    Route::post('/docente/rubrica', [DocenteController::class, 'rubrica']);
     Route::post('/docente/guardar-notas', [DocenteController::class, 'guardarNotas']);
 
     // Reportes
     Route::post('/reportes/generar', [ReporteController::class, 'generar']);
-    Route::post('/reportes/guardar', [ReporteController::class, 'guardar']);
-    Route::post('/reportes/pdf-data', [ReporteController::class, 'datosParaPdf']);
+    Route::post('/reportes/pdf-data', [App\Http\Controllers\Api\DocenteController::class, 'pdfData']);
+Route::post('/reportes/guardar', [App\Http\Controllers\Api\DocenteController::class, 'guardarConclusion']);
     Route::get('/reportes/general', [ReporteController::class, 'reporteGeneral']);
 });

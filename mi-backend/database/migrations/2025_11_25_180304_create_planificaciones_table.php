@@ -15,7 +15,7 @@ public function up(): void
             $table->id();
             $table->foreignId('docente_id')->constrained('users');
             $table->foreignId('asignatura_id')->constrained('asignaturas');
-            $table->foreignId('habilidad_blanda_id')->constrained('habilidades_blandas');
+            //$table->foreignId('habilidad_blanda_id')->constrained('habilidades_blandas');
             $table->string('periodo_academico');
             
             // --- CAMBIO: Agregamos el Parcial ---

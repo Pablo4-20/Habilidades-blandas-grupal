@@ -11,6 +11,7 @@ import EvaluacionDocente from './components/EvaluacionDocente'; // <--- ¡ESTA L
 import RoleGuard from './components/RoleGuard';
 import ReportesDocente from './components/ReportesDocente';
 import ReportesCoordinador from './components/ReportesCoordinador';
+import GestionPeriodos from './components/GestionPeriodos';
 
 // --- Rutas de Protección ---
 const ProtectedRoute = ({ children }) => {
@@ -56,6 +57,7 @@ function App() {
                 <Route path="usuarios" element={<GestionUsuarios />} />
                 <Route path="habilidades" element={<GestionHabilidades />} />
                 <Route path="asignaturas" element={<GestionAsignaturas />} /> 
+                <Route path="periodos" element={<GestionPeriodos />} />
             </Route>
 
             {/* ZONA COORDINADOR */}
@@ -63,6 +65,7 @@ function App() {
                 <Route path="asignaciones" element={<AsignarMaterias />} />
                 <Route path="reportes" element={<ReportesCoordinador />} />
             </Route>
+
 
         </Route>
       </Routes>

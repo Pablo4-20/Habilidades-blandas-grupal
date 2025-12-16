@@ -6,190 +6,200 @@ import {
     PlusIcon, 
     DocumentTextIcon, 
     TrashIcon,
-    PencilSquareIcon, // <--- IMPORTAMOS EL ICONO DE EDITAR
+    PencilSquareIcon,
     UserGroupIcon,
     AcademicCapIcon,
     FunnelIcon,
-    CloudArrowUpIcon 
+    CloudArrowUpIcon,
+    IdentificationIcon,
+    EnvelopeIcon
 } from '@heroicons/react/24/outline';
 
 const GestionUsuarios = () => {
-    // --- ESTADOS PRINCIPALES ---
+    // --- ESTADOS ---
     const [activeTab, setActiveTab] = useState('administrativo');
     const [dataList, setDataList] = useState([]); 
     const [loading, setLoading] = useState(false);
     
-    // --- ESTADO DE EDICIÓN (NUEVO) ---
+    // Edición
     const [editingId, setEditingId] = useState(null); 
 
-    // --- ESTADOS DE FILTRO ---
+    // Filtros
     const [busqueda, setBusqueda] = useState('');
     const [filtroRol, setFiltroRol] = useState('');          
     const [filtroCarrera, setFiltroCarrera] = useState('');  
     const [filtroCiclo, setFiltroCiclo] = useState('');      
 
-    // --- ESTADOS DE MODALES ---
+    // Modales
     const [showModal, setShowModal] = useState(false);       
     const [showImportModal, setShowImportModal] = useState(false); 
     const [fileToUpload, setFileToUpload] = useState(null);  
 
-    // --- ESTADOS DE FORMULARIOS ---
-    const [formUser, setFormUser] = useState({ name: '', email: '', rol: 'docente', password: '' });
-    const [formStudent, setFormStudent] = useState({ nombres: '', apellidos: '', email: '', carrera: 'Software', ciclo_actual: 'I' });
+    // Formularios
+    const [formUser, setFormUser] = useState({ 
+        cedula: '', nombres: '', apellidos: '', email: '', rol: 'docente', password: '' 
+    });
+    const [formStudent, setFormStudent] = useState({ 
+        cedula: '', nombres: '', apellidos: '', email: '', carrera: 'Software', ciclo_actual: 'I' 
+    });
 
     // --- CARGA DE DATOS ---
-    useEffect(() => {
-        let isMounted = true;
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const endpoint = activeTab === 'administrativo' ? '/users' : '/estudiantes';
-                const res = await api.get(endpoint);
-                if (isMounted) setDataList(Array.isArray(res.data) ? res.data : []);
-            } catch (error) {
-                console.error("Error cargando datos:", error);
-                if (isMounted) setDataList([]);
-            } finally {
-                if (isMounted) setLoading(false);
-            }
-        };
-        fetchData();
-        return () => { isMounted = false; };
-    }, [activeTab]);
-
-    // --- MANEJO DE PESTAÑAS ---
-    const handleTabChange = (tab) => {
-        if (tab === activeTab) return;
+    const fetchData = async () => {
         setLoading(true);
-        setDataList([]); 
+        try {
+            const endpoint = activeTab === 'administrativo' ? '/users' : '/estudiantes';
+            const res = await api.get(endpoint);
+            // Aseguramos que sea un array
+            setDataList(Array.isArray(res.data) ? res.data : []);
+        } catch (error) {
+            console.error("Error cargando datos:", error);
+            setDataList([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Efecto inicial y al cambiar pestaña
+    useEffect(() => {
+        fetchData();
+        // Limpiar filtros al cambiar tab
         setBusqueda('');
         setFiltroRol('');
         setFiltroCarrera('');
         setFiltroCiclo('');
-        setEditingId(null); // Limpiamos edición al cambiar tab
-        setActiveTab(tab);
+    }, [activeTab]);
+
+    const handleTabChange = (tab) => {
+        if (tab !== activeTab) {
+            setActiveTab(tab);
+            setEditingId(null);
+        }
     };
 
-    // --- LÓGICA DE FILTRADO ---
-    const filteredData = dataList.filter(item => {
-        if (!item) return false;
-        const term = busqueda.toLowerCase();
-        let matchesText = false;
-        if (activeTab === 'administrativo') {
-            matchesText = (item.name?.toLowerCase() || '').includes(term) || (item.email?.toLowerCase() || '').includes(term);
-        } else {
-            matchesText = (item.nombres?.toLowerCase() || '').includes(term) || (item.apellidos?.toLowerCase() || '').includes(term) || (item.email?.toLowerCase() || '').includes(term);
-        }
-
-        if (activeTab === 'administrativo') {
-            const matchesRol = filtroRol ? item.rol === filtroRol : true;
-            return matchesText && matchesRol;
-        } else {
-            const matchesCarrera = filtroCarrera ? item.carrera === filtroCarrera : true;
-            const matchesCiclo = filtroCiclo ? item.ciclo_actual === filtroCiclo : true;
-            return matchesText && matchesCarrera && matchesCiclo;
-        }
-    });
-
-    // --- HELPER: RESETEAR FORMULARIOS ---
-    const resetForms = () => {
-        setFormUser({ name: '', email: '', rol: 'docente', password: '' });
-        setFormStudent({ nombres: '', apellidos: '', email: '', carrera: 'Software', ciclo_actual: 'I' });
-        setEditingId(null); // Importante: Salir del modo edición
-        setShowModal(false);
-    };
-
-    // --- ACCIÓN: GUARDAR (CREAR O EDITAR) ---
-    const handleGuardar = async (e) => {
-        e.preventDefault();
+    // --- IMPORTAR (SOLUCIÓN ACTUALIZACIÓN) ---
+    const handleImportar = async (e) => {
+        // Evitar recarga del form
+        if (e && e.preventDefault) e.preventDefault();
         
-        // Determinar endpoint base
-        const baseEndpoint = activeTab === 'administrativo' ? '/users' : '/estudiantes';
-        const payload = activeTab === 'administrativo' ? formUser : formStudent;
-
+        if (!fileToUpload) return Swal.fire('Atención', 'Seleccione un archivo CSV.', 'warning');
+        
+        const formData = new FormData();
+        formData.append('file', fileToUpload);
+        
+        const endpoint = activeTab === 'administrativo' ? '/users/import' : '/estudiantes/import';
+        
         try {
-            if (editingId) {
-                // --- MODO EDICIÓN (PUT) ---
-                // Nota: Si el password está vacío en edición, el backend debería ignorarlo
-                await api.put(`${baseEndpoint}/${editingId}`, payload);
-                Swal.fire({ title: '¡Actualizado!', icon: 'success', timer: 1500, showConfirmButton: false });
-            } else {
-                // --- MODO CREACIÓN (POST) ---
-                await api.post(baseEndpoint, payload);
-                Swal.fire({ title: '¡Registrado!', icon: 'success', timer: 1500, showConfirmButton: false });
-            }
+            Swal.fire({
+                title: 'Subiendo...',
+                text: 'Procesando datos',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+
+            const res = await api.post(endpoint, formData, { 
+                headers: { 'Content-Type': 'multipart/form-data' } 
+            });
             
-            resetForms();
-            // Recarga optimizada: volver a pedir los datos
-            const res = await api.get(baseEndpoint);
-            setDataList(res.data);
+            Swal.fire('¡Éxito!', res.data.message, 'success');
+            
+            // 1. Cerrar modal
+            setShowImportModal(false);
+            // 2. Limpiar archivo
+            setFileToUpload(null);
+            // 3. RECARGAR LA TABLA AUTOMÁTICAMENTE
+            fetchData();
 
         } catch (error) {
             console.error(error);
-            Swal.fire('Error', 'No se pudo guardar la información. Verifique los datos.', 'error');
+            Swal.fire('Error', 'Formato incorrecto o datos duplicados.', 'error');
         }
     };
 
-    // --- ACCIÓN: PREPARAR EDICIÓN ---
+    // --- GUARDAR ---
+    const handleGuardar = async (e) => {
+        e.preventDefault();
+        const baseEndpoint = activeTab === 'administrativo' ? '/users' : '/estudiantes';
+        const payload = activeTab === 'administrativo' ? formUser : formStudent;
+
+        if (payload.cedula.length !== 10) return Swal.fire('Error', 'La cédula debe tener 10 dígitos.', 'warning');
+
+        try {
+            if (editingId) {
+                await api.put(`${baseEndpoint}/${editingId}`, payload);
+                Swal.fire({ title: '¡Actualizado!', icon: 'success', timer: 1500, showConfirmButton: false });
+            } else {
+                await api.post(baseEndpoint, payload);
+                Swal.fire({ title: '¡Registrado!', icon: 'success', timer: 1500, showConfirmButton: false });
+            }
+            resetForms();
+            fetchData(); // Recargar tabla
+        } catch (error) {
+            Swal.fire('Error', error.response?.data?.message || 'Error al guardar.', 'error');
+        }
+    };
+
+    // --- ACCIONES AUXILIARES ---
+    const resetForms = () => {
+        setFormUser({ cedula: '', nombres: '', apellidos: '', email: '', rol: 'docente', password: '' });
+        setFormStudent({ cedula: '', nombres: '', apellidos: '', email: '', carrera: 'Software', ciclo_actual: 'I' });
+        setEditingId(null); 
+        setShowModal(false);
+    };
+
     const handleEditar = (item) => {
-        setEditingId(item.id); // Marcamos que estamos editando este ID
-        
+        setEditingId(item.id); 
         if (activeTab === 'administrativo') {
-            setFormUser({
-                name: item.name,
-                email: item.email,
-                rol: item.rol,
-                password: '' // Dejamos vacío para no sobreescribir si no se cambia
-            });
+            setFormUser({ ...item, password: '' });
         } else {
-            setFormStudent({
-                nombres: item.nombres,
-                apellidos: item.apellidos,
-                email: item.email,
-                carrera: item.carrera,
-                ciclo_actual: item.ciclo_actual
-            });
+            setFormStudent({ ...item });
         }
         setShowModal(true);
     };
 
-    // --- ACCIÓN: ELIMINAR ---
     const handleEliminar = (id) => {
         const endpoint = activeTab === 'administrativo' ? `/users/${id}` : `/estudiantes/${id}`;
         Swal.fire({
             title: '¿Eliminar?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#EF4444', confirmButtonText: 'Sí'
         }).then(async (result) => {
             if (result.isConfirmed) {
-                try {
-                    await api.delete(endpoint);
-                    setDataList(prev => prev.filter(item => item.id !== id));
-                    Swal.fire('Eliminado', '', 'success');
-                } catch (error) { Swal.fire('Error', 'No se pudo eliminar.', 'error'); }
+                await api.delete(endpoint);
+                fetchData();
+                Swal.fire('Eliminado', '', 'success');
             }
         });
     };
 
-    // --- ACCIÓN: IMPORTAR CSV ---
-    const handleImportar = async (e) => {
-        e.preventDefault();
-        if (!fileToUpload) return Swal.fire('Atención', 'Seleccione un archivo CSV.', 'warning');
-        const formData = new FormData();
-        formData.append('file', fileToUpload);
-        const endpoint = activeTab === 'administrativo' ? '/users/import' : '/estudiantes/import';
-        try {
-            Swal.showLoading();
-            const res = await api.post(endpoint, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-            Swal.fire('¡Éxito!', res.data.message, 'success');
-            setShowImportModal(false);
-            setFileToUpload(null);
-            const resData = await api.get(activeTab === 'administrativo' ? '/users' : '/estudiantes');
-            setDataList(resData.data);
-        } catch (error) {
-            Swal.fire('Error', 'Formato incorrecto o datos duplicados.', 'error');
-        }
+    const handleInputCedula = (e, isUser) => {
+        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+        if (isUser) setFormUser({ ...formUser, cedula: val });
+        else setFormStudent({ ...formStudent, cedula: val });
     };
 
-    // --- HELPERS VISUALES ---
+  // Filtros visuales ROBUSTOS
+    const filteredData = dataList.filter(item => {
+        const term = busqueda.toLowerCase();
+        // Unimos nombre + apellido + email + cedula para buscar en todo lado
+        const fullName = `${item.nombres} ${item.apellidos}`.toLowerCase();
+        const matchesText = fullName.includes(term) || 
+                            (item.email || '').toLowerCase().includes(term) || 
+                            (item.cedula || '').includes(term);
+
+        if (activeTab === 'administrativo') {
+            return matchesText && (filtroRol ? item.rol === filtroRol : true);
+        } else {
+            // --- CORRECCIÓN AQUÍ ---
+            // Convertimos ambos lados a minúsculas (.toLowerCase()) y quitamos espacios (.trim())
+            // para que "Software" sea igual a "software "
+            const carreraItem = (item.carrera || '').toLowerCase().trim();
+            const carreraFiltro = filtroCarrera.toLowerCase().trim();
+
+            const matchCarrera = filtroCarrera ? carreraItem === carreraFiltro : true;
+            const matchCiclo = filtroCiclo ? item.ciclo_actual === filtroCiclo : true;
+
+            return matchesText && matchCarrera && matchCiclo;
+        }
+    });
+
     const getInitials = (n) => n ? n.charAt(0).toUpperCase() : '?';
     const getRoleStyle = (r) => {
         if(r === 'admin') return 'bg-purple-100 text-purple-700 border-purple-200';
@@ -206,10 +216,10 @@ const GestionUsuarios = () => {
                     <p className="text-gray-500 text-sm mt-1">Administración de personal y nómina estudiantil</p>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={() => setShowImportModal(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg font-medium shadow-sm transition text-sm">
+                    <button onClick={() => setShowImportModal(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg font-bold shadow-sm transition text-sm">
                         <DocumentTextIcon className="h-5 w-5" /> Carga Masiva
                     </button>
-                    <button onClick={() => { resetForms(); setShowModal(true); }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-medium shadow-sm transition text-sm">
+                    <button onClick={() => { resetForms(); setShowModal(true); }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold shadow-sm transition text-sm">
                         <PlusIcon className="h-5 w-5" />
                         {activeTab === 'administrativo' ? 'Nuevo Usuario' : 'Nuevo Estudiante'}
                     </button>
@@ -228,12 +238,12 @@ const GestionUsuarios = () => {
                 </nav>
             </div>
 
-            {/* FILTROS AVANZADOS (SIN CAMBIOS) */}
+            {/* FILTROS */}
             <div className="flex flex-col md:flex-row gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
                 <div className="relative flex-1">
                     <MagnifyingGlassIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
                     <input type="text" className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-100"
-                        placeholder="Buscar por nombre, email..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+                        placeholder="Buscar por cédula, nombre, email..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
                 </div>
                 {activeTab === 'administrativo' ? (
                     <div className="w-full md:w-48">
@@ -250,8 +260,7 @@ const GestionUsuarios = () => {
                         </div>
                         <div className="w-full md:w-32">
                             <select value={filtroCiclo} onChange={(e) => setFiltroCiclo(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-white outline-none text-sm text-gray-600">
-                                <option value="">Todos Ciclos</option><option value="I">I</option><option value="II">II</option><option value="III">III</option><option value="IV">IV</option>
-                                <option value="V">V</option><option value="VI">VI</option><option value="VII">VII</option><option value="VIII">VIII</option>
+                                <option value="">Todos Ciclos</option><option value="I">I</option><option value="II">II</option><option value="III">III</option><option value="IV">IV</option><option value="V">V</option><option value="VI">VI</option><option value="VII">VII</option><option value="VIII">VIII</option>
                             </select>
                         </div>
                     </>
@@ -261,45 +270,61 @@ const GestionUsuarios = () => {
                 )}
             </div>
 
-            {/* TABLA CON BOTÓN EDITAR */}
+            {/* TABLA CON CORREO SEPARADO */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-100">
                     <thead className="bg-white">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">{activeTab === 'administrativo' ? 'Usuario' : 'Estudiante'}</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Cédula</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Nombres y Apellidos</th>
+                            {/* COLUMNA CORREO AGREGADA */}
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Correo Electrónico</th>
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">{activeTab === 'administrativo' ? 'Rol' : 'Carrera'}</th>
                             {activeTab === 'estudiantil' && <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Ciclo</th>}
                             <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Acciones</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-50">
-                        {loading ? <tr><td colSpan="4" className="text-center py-10 text-gray-400">Cargando...</td></tr> : filteredData.length === 0 ? (
-                            <tr><td colSpan="4" className="text-center py-12 text-gray-400"><FunnelIcon className="h-10 w-10 mx-auto mb-2 opacity-20"/>Sin resultados.</td></tr>
+                        {loading ? <tr><td colSpan="6" className="text-center py-10 text-gray-400">Cargando...</td></tr> : filteredData.length === 0 ? (
+                            <tr><td colSpan="6" className="text-center py-12 text-gray-400"><FunnelIcon className="h-10 w-10 mx-auto mb-2 opacity-20"/>Sin resultados.</td></tr>
                         ) : filteredData.map((item) => (
                             <tr key={item.id} className="hover:bg-gray-50 transition">
-                                <td className="px-6 py-4 flex items-center gap-3">
-                                    <div className="h-9 w-9 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center font-bold text-sm border">{getInitials(item.name || item.nombres)}</div>
-                                    <div>
-                                        <div className="text-sm font-semibold text-gray-900">{activeTab === 'administrativo' ? item.name : `${item.nombres} ${item.apellidos}`}</div>
-                                        <div className="text-xs text-gray-500">{item.email}</div>
+                                {/* CÉDULA */}
+                                <td className="px-6 py-4">
+                                    <div className="text-sm text-gray-600 font-mono bg-gray-50 px-2 py-1 rounded w-fit border border-gray-200 flex items-center gap-1">
+                                        <IdentificationIcon className="h-3 w-3 text-gray-400"/> 
+                                        {item.cedula || 'S/N'}
                                     </div>
                                 </td>
+
+                                {/* NOMBRES */}
+                                <td className="px-6 py-4 flex items-center gap-3">
+                                    <div className="h-8 w-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center font-bold text-xs border">{getInitials(item.nombres)}</div>
+                                    <div className="text-sm font-semibold text-gray-900">{item.apellidos} {item.nombres}</div>
+                                </td>
+
+                                {/* CORREO (NUEVA COLUMNA) */}
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                                        <EnvelopeIcon className="h-4 w-4 text-gray-400"/>
+                                        {item.email}
+                                    </div>
+                                </td>
+
+                                {/* ROL / CARRERA */}
                                 <td className="px-6 py-4 text-sm">
                                     {activeTab === 'administrativo' ? 
                                         <span className={`px-2 py-1 text-xs font-bold uppercase rounded-full border ${getRoleStyle(item.rol)}`}>{item.rol}</span> 
                                         : item.carrera}
                                 </td>
+
                                 {activeTab === 'estudiantil' && <td className="px-6 py-4 text-sm font-bold text-gray-600">{item.ciclo_actual}</td>}
+
+                                {/* ACCIONES */}
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex items-center justify-end gap-2">
-                                        {/* BOTÓN EDITAR */}
-                                        <button onClick={() => handleEditar(item)} className="text-gray-400 hover:text-amber-600 p-2 hover:bg-amber-50 rounded-full transition" title="Editar">
-                                            <PencilSquareIcon className="h-5 w-5" />
-                                        </button>
-                                        {/* BOTÓN ELIMINAR */}
-                                        <button onClick={() => handleEliminar(item.id)} className="text-gray-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition" title="Eliminar">
-                                            <TrashIcon className="h-5 w-5" />
-                                        </button>
+                                        <button onClick={() => handleEditar(item)} className="text-gray-400 hover:text-amber-600 p-2 hover:bg-amber-50 rounded-full transition"><PencilSquareIcon className="h-5 w-5" /></button>
+                                        <button onClick={() => handleEliminar(item.id)} className="text-gray-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition"><TrashIcon className="h-5 w-5" /></button>
                                     </div>
                                 </td>
                             </tr>
@@ -308,31 +333,43 @@ const GestionUsuarios = () => {
                 </table>
             </div>
 
-            {/* MODAL REUTILIZABLE (CREAR / EDITAR) */}
+            {/* MODAL CREAR/EDITAR */}
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 animate-fade-in">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
                         <h3 className="text-lg font-bold mb-4">
-                            {editingId 
-                                ? `Editar ${activeTab === 'administrativo' ? 'Usuario' : 'Estudiante'}` 
-                                : `Nuevo ${activeTab === 'administrativo' ? 'Usuario' : 'Estudiante'}`
-                            }
+                            {editingId ? 'Editar' : 'Nuevo'} {activeTab === 'administrativo' ? 'Usuario' : 'Estudiante'}
                         </h3>
-                        
                         <form onSubmit={handleGuardar} className="space-y-4">
+                            {/* Cédula */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cédula</label>
+                                <div className="relative">
+                                    <IdentificationIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                                    <input type="text" required maxLength="10" className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none" 
+                                        value={activeTab === 'administrativo' ? formUser.cedula : formStudent.cedula}
+                                        onChange={(e) => handleInputCedula(e, activeTab === 'administrativo')} placeholder="1234567890"/>
+                                </div>
+                            </div>
+
                             {activeTab === 'administrativo' ? (
                                 <>
-                                    <input required placeholder="Nombre Completo" className="w-full px-4 py-2 border rounded-lg" value={formUser.name} onChange={e => setFormUser({...formUser, name: e.target.value})} />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input required placeholder="Nombres" className="w-full px-4 py-2 border rounded-lg" value={formUser.nombres} onChange={e => setFormUser({...formUser, nombres: e.target.value})} />
+                                        <input required placeholder="Apellidos" className="w-full px-4 py-2 border rounded-lg" value={formUser.apellidos} onChange={e => setFormUser({...formUser, apellidos: e.target.value})} />
+                                    </div>
                                     <input required type="email" placeholder="Correo" className="w-full px-4 py-2 border rounded-lg" value={formUser.email} onChange={e => setFormUser({...formUser, email: e.target.value})} />
                                     <select className="w-full px-4 py-2 border rounded-lg bg-white" value={formUser.rol} onChange={e => setFormUser({...formUser, rol: e.target.value})}>
                                         <option value="docente">Docente</option><option value="coordinador">Coordinador</option><option value="admin">Administrador</option>
                                     </select>
-                                    <input type="text" placeholder={editingId ? "Contraseña (dejar vacío para mantener)" : "Contraseña"} className="w-full px-4 py-2 border rounded-lg" value={formUser.password} onChange={e => setFormUser({...formUser, password: e.target.value})} />
+                                    <input type="password" placeholder={editingId ? "Contraseña (opcional)" : "Contraseña"} className="w-full px-4 py-2 border rounded-lg" value={formUser.password} onChange={e => setFormUser({...formUser, password: e.target.value})} />
                                 </>
                             ) : (
                                 <>
-                                    <input required placeholder="Nombres" className="w-full px-4 py-2 border rounded-lg" value={formStudent.nombres} onChange={e => setFormStudent({...formStudent, nombres: e.target.value})} />
-                                    <input required placeholder="Apellidos" className="w-full px-4 py-2 border rounded-lg" value={formStudent.apellidos} onChange={e => setFormStudent({...formStudent, apellidos: e.target.value})} />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input required placeholder="Nombres" className="w-full px-4 py-2 border rounded-lg" value={formStudent.nombres} onChange={e => setFormStudent({...formStudent, nombres: e.target.value})} />
+                                        <input required placeholder="Apellidos" className="w-full px-4 py-2 border rounded-lg" value={formStudent.apellidos} onChange={e => setFormStudent({...formStudent, apellidos: e.target.value})} />
+                                    </div>
                                     <input required type="email" placeholder="Correo Estudiantil" className="w-full px-4 py-2 border rounded-lg" value={formStudent.email} onChange={e => setFormStudent({...formStudent, email: e.target.value})} />
                                     <div className="grid grid-cols-2 gap-4">
                                         <select className="w-full px-4 py-2 border rounded-lg bg-white" value={formStudent.carrera} onChange={e => setFormStudent({...formStudent, carrera: e.target.value})}>
@@ -346,31 +383,30 @@ const GestionUsuarios = () => {
                             )}
                             <div className="flex gap-3 pt-2">
                                 <button type="button" onClick={resetForms} className="flex-1 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Cancelar</button>
-                                <button type="submit" className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
-                                    {editingId ? 'Actualizar' : 'Guardar'}
-                                </button>
+                                <button type="submit" className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">{editingId ? 'Actualizar' : 'Guardar'}</button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
 
-            {/* MODAL IMPORTAR (SIN CAMBIOS) */}
+            {/* MODAL IMPORTAR */}
             {showImportModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 animate-fade-in">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
-                        <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <CloudArrowUpIcon className="h-8 w-8 text-green-600" />
+                        <CloudArrowUpIcon className="h-12 w-12 text-green-600 mx-auto mb-4 bg-green-50 p-2 rounded-full"/>
+                        <h3 className="text-xl font-bold mb-2">Importar {activeTab === 'administrativo' ? 'Usuarios' : 'Estudiantes'}</h3>
+                        <div className="bg-slate-100 p-3 rounded-lg text-left mb-4 border border-slate-200">
+                            <p className="text-xs font-bold text-slate-500 uppercase mb-1">Columnas:</p>
+                            <code className="text-xs font-mono text-blue-600 block bg-white p-2 rounded border break-all">
+                                {activeTab === 'administrativo' ? 'cedula,nombres,apellidos,email,password,rol' : 'cedula,nombres,apellidos,email,carrera,ciclo'}
+                            </code>
                         </div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">Importar {activeTab === 'administrativo' ? 'Usuarios' : 'Estudiantes'}</h3>
-                        <p className="text-sm text-gray-500 mb-6">
-                            Sube un archivo <b>.CSV</b> con la estructura requerida.
-                        </p>
-                        <input type="file" accept=".csv" onChange={(e) => setFileToUpload(e.target.files[0])} 
-                            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-green-50 file:text-green-700 hover:file:bg-green-100 mb-6" />
+                        <input type="file" accept=".csv" onChange={(e) => setFileToUpload(e.target.files[0])} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-green-50 file:text-green-700 file:border-0 mb-6 cursor-pointer"/>
                         <div className="flex gap-3">
-                            <button onClick={() => setShowImportModal(false)} className="flex-1 py-2 bg-gray-100 rounded-lg">Cancelar</button>
-                            <button onClick={handleImportar} className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Subir Archivo</button>
+                            <button type="button" onClick={() => setShowImportModal(false)} className="flex-1 py-2 bg-gray-100 rounded-lg font-bold">Cancelar</button>
+                            {/* BOTÓN CON TYPE BUTTON PARA EVITAR ERRORES */}
+                            <button type="button" onClick={handleImportar} className="flex-1 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700">Subir</button>
                         </div>
                     </div>
                 </div>

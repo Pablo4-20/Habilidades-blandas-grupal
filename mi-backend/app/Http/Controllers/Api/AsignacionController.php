@@ -61,7 +61,51 @@ class AsignacionController extends Controller
         $asignacion = Asignacion::create($request->all());
         return response()->json(['message' => 'Carga asignada correctamente', 'data' => $asignacion]);
     }
+// --- ACTUALIZAR ASIGNACIÓN (MÉTODO FALTANTE) ---
+    public function update(Request $request, $id)
+    {
+        // 1. Buscamos la asignación
+        $asignacion = Asignacion::find($id);
 
+        if (!$asignacion) {
+            return response()->json(['message' => 'Asignación no encontrada'], 404);
+        }
+
+        // 2. Validamos los datos
+        $request->validate([
+            'docente_id' => 'required|exists:users,id',
+            'asignatura_id' => 'required|exists:asignaturas,id',
+            'paralelo' => 'required',
+            'periodo' => 'required'
+        ]);
+
+        // 3. Verificamos duplicados (EXCLUYENDO la actual)
+        // "No puede haber otra asignación de la misma materia, en el mismo periodo y paralelo"
+        $existeDuplicado = Asignacion::where('asignatura_id', $request->asignatura_id)
+            ->where('periodo', $request->periodo)
+            ->where('paralelo', $request->paralelo)
+            ->where('id', '!=', $id) // Importante: Ignorar el registro que estamos editando
+            ->exists();
+
+        if ($existeDuplicado) {
+            return response()->json([
+                'message' => 'Conflicto: Esta materia ya está asignada en este periodo y paralelo.'
+            ], 422);
+        }
+
+        // 4. Guardamos los cambios
+        $asignacion->update([
+            'docente_id' => $request->docente_id,
+            'asignatura_id' => $request->asignatura_id,
+            'paralelo' => $request->paralelo,
+            'periodo' => $request->periodo
+        ]);
+
+        return response()->json([
+            'message' => 'Asignación actualizada correctamente.',
+            'data' => $asignacion
+        ]);
+    }
     // 4. Eliminar
     public function destroy($id)
     {

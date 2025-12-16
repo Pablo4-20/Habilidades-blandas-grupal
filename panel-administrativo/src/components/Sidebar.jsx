@@ -12,6 +12,10 @@ import {
     SparklesIcon,
     BookOpenIcon
 } from '@heroicons/react/24/outline';
+import { 
+    // ... otros iconos
+    CalendarDaysIcon // <--- IMPORTAR ESTE ICONO
+} from '@heroicons/react/24/outline';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
     const user = JSON.parse(localStorage.getItem('user'));
@@ -46,6 +50,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             { name: 'Gestión Usuarios', path: '/dashboard/usuarios', icon: UsersIcon },
             { name: 'Habilidades', path: '/dashboard/habilidades', icon: SparklesIcon },
             { name: 'Asignaturas', path: '/dashboard/asignaturas', icon: BookOpenIcon },
+            { name: 'Periodos Académicos', path: '/dashboard/periodos', icon: CalendarDaysIcon }
         ],
         coordinador: [
             { name: 'Inicio', path: '/dashboard', icon: HomeIcon },
@@ -109,13 +114,19 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             {/* USUARIO */}
             <div className="p-4 border-t border-gray-200">
                 <div className={`flex items-center ${!isOpen && 'justify-center'}`}>
+                    {/* CORRECCIÓN: Usamos nombres.charAt(0) */}
                     <div className="flex-shrink-0 h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold border border-blue-200">
-                        {user?.name?.charAt(0).toUpperCase()}
+                        {user?.nombres ? user.nombres.charAt(0).toUpperCase() : '?'}
                     </div>
+                    
                     <div className={`ml-3 overflow-hidden transition-all duration-300 ${isOpen ? 'w-32 opacity-100' : 'w-0 opacity-0'}`}>
-                        <p className="text-sm font-medium text-gray-700 truncate">{user?.name}</p>
+                        {/* CORRECCIÓN: Mostramos Nombres y Apellidos */}
+                        <p className="text-sm font-medium text-gray-700 truncate">
+                            {user?.nombres} {user?.apellidos?.split(' ')[0]}
+                        </p>
                         <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                     </div>
+
                     {isOpen && (
                         <button onClick={handleLogout} className="ml-auto text-gray-400 hover:text-red-600 transition" title="Cerrar Sesión">
                             <ArrowRightOnRectangleIcon className="h-5 w-5" />

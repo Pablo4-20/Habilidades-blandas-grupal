@@ -9,25 +9,30 @@ class Evaluacion extends Model
 {
     use HasFactory;
 
-    // 1. ESPECIFICAR LA TABLA CORRECTA (Para corregir el error 500)
     protected $table = 'evaluaciones';
 
-    // 2. CAMPOS PERMITIDOS (Para que deje guardar las notas después)
     protected $fillable = [
         'planificacion_id',
         'estudiante_id',
+        'habilidad_blanda_id', // <--- ¡AGREGA ESTA LÍNEA!
         'parcial',
-        'nivel'
+        'nivel',
+        //'fecha_evaluacion'
     ];
 
-    // Relaciones (Opcionales por ahora, pero buenas para futuro)
+    // Relaciones
+    public function planificacion()
+    {
+        return $this->belongsTo(Planificacion::class);
+    }
+
     public function estudiante()
     {
         return $this->belongsTo(Estudiante::class);
     }
-
-    public function planificacion()
+    
+    public function habilidad()
     {
-        return $this->belongsTo(Planificacion::class);
+        return $this->belongsTo(HabilidadBlanda::class, 'habilidad_blanda_id');
     }
 }

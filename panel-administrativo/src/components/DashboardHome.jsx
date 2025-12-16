@@ -46,7 +46,7 @@ const DashboardHome = () => {
             {/* SALUDO DE BIENVENIDA */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
                 <div className="relative z-10">
-                    <h1 className="text-3xl font-bold">¡Hola, {user.name}!</h1>
+                    <h1 className="text-3xl font-bold">¡Hola, {user?.nombres} {user?.apellidos}!</h1>
                     <p className="text-blue-100 mt-2 text-lg">
                         Bienvenido al panel de control de {user.rol === 'admin' ? 'Administración' : user.rol === 'coordinador' ? 'Coordinación' : 'Docencia'}.
                     </p>

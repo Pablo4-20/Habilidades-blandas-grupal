@@ -10,9 +10,27 @@ class EstudianteSeeder extends Seeder
     public function run(): void
     {
         DB::table('estudiantes')->insert([
-            ['nombres' => 'Miguel', 'apellidos' => 'Andrade', 'carrera' => 'Software', 'ciclo_actual' => 'V'],
-            ['nombres' => 'Lorena', 'apellidos' => 'Benavidez', 'carrera' => 'Software', 'ciclo_actual' => 'V'],
-            ['nombres' => 'Joel', 'apellidos' => 'Diaz', 'carrera' => 'Software', 'ciclo_actual' => 'V'],
+            [
+                'cedula' => '0201111111', // <--- Cédula ficticia 1
+                'nombres' => 'Miguel', 
+                'apellidos' => 'Andrade', 
+                'carrera' => 'Software', 
+                'ciclo_actual' => 'V'
+            ],
+            [
+                'cedula' => '0202222222', // <--- Cédula ficticia 2
+                'nombres' => 'Lorena', 
+                'apellidos' => 'Benavidez', 
+                'carrera' => 'Software', 
+                'ciclo_actual' => 'V'
+            ],
+            [
+                'cedula' => '0203333333', // <--- Cédula ficticia 3
+                'nombres' => 'Joel', 
+                'apellidos' => 'Diaz', 
+                'carrera' => 'Software', 
+                'ciclo_actual' => 'V'
+            ],
         ]);
     }
 }

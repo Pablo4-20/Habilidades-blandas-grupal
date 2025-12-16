@@ -6,24 +6,26 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
-{
-    Schema::create('habilidades_blandas', function (Blueprint $table) {
-        $table->id();
-        $table->string('nombre');      // Ej: Trabajo en Equipo [cite: 46]
-        $table->text('definicion');    // Definición de la sección 3 [cite: 67]
-        $table->timestamps();
-    });
-}
+    {
+        Schema::create('habilidades_blandas', function (Blueprint $table) {
+            $table->id();
+            
+            // ESTA ES LA COLUMNA QUE FALTABA
+            $table->foreignId('asignatura_id')->constrained('asignaturas')->onDelete('cascade');
+            
+            $table->string('nombre');
+            $table->text('definicion');
+            $table->text('actividades')->nullable();
+            $table->timestamps();
 
-    /**
-     * Reverse the migrations.
-     */
+            // Evitamos duplicados
+            $table->unique(['asignatura_id', 'nombre']);
+        });
+    }
+
     public function down(): void
     {
-        Schema::dropIfExists('habilidad_blandas');
+        Schema::dropIfExists('habilidades_blandas');
     }
 };

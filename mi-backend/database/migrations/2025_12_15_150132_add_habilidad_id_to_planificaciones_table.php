@@ -1,0 +1,28 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+   public function up()
+{
+    Schema::table('planificaciones', function (Blueprint $table) {
+        $table->foreignId('habilidad_id')->nullable()->constrained('habilidades_blandas');
+    });
+}
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('planificaciones', function (Blueprint $table) {
+            //
+        });
+    }
+};

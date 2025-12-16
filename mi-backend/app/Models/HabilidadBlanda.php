@@ -2,15 +2,24 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class HabilidadBlanda extends Model
 {
-    protected $table = 'habilidades_blandas'; // Especificamos la tabla porque Laravel buscaría "habilidad_blandas"
-    protected $fillable = ['nombre', 'definicion', 'actividades'];
+    use HasFactory;
 
-    public function planificaciones()
+    protected $table = 'habilidades_blandas';
+
+    protected $fillable = [
+        'asignatura_id',
+        'nombre',
+        'definicion',
+        'actividades'
+    ];
+
+    public function asignatura()
     {
-        return $this->hasMany(Planificacion::class);
+        return $this->belongsTo(Asignatura::class, 'asignatura_id');
     }
 }

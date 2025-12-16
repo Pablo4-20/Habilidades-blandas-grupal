@@ -9,32 +9,55 @@ class Planificacion extends Model
 {
     use HasFactory;
 
-    // Nombre exacto de la tabla en la base de datos
     protected $table = 'planificaciones';
 
     protected $fillable = [
-        'docente_id',
         'asignatura_id',
-        'habilidad_blanda_id',
+        'docente_id',
+        'habilidad_id',
+        'parcial',
         'periodo_academico',
-        'parcial'
+        'fecha_inicio',
+        'fecha_fin',
+        'habilidad_blanda_id'
     ];
 
-    // --- RELACIONES (Esto es lo que faltaba o estaba mal) ---
-
-    public function docente()
-    {
-        return $this->belongsTo(User::class, 'docente_id');
-    }
-
+    // ✅ RELACIÓN CON ASIGNATURA
     public function asignatura()
     {
         return $this->belongsTo(Asignatura::class, 'asignatura_id');
     }
 
-    // Esta es la clave para que aparezca en el combo de Calificar
+    // ✅ RELACIÓN CON DOCENTE (Usuario)
+    public function docente()
+    {
+        return $this->belongsTo(User::class, 'docente_id');
+    }
+
+    // ✅ RELACIÓN CON HABILIDAD (con manejo de nulls)
     public function habilidad()
     {
-        return $this->belongsTo(HabilidadBlanda::class, 'habilidad_blanda_id');
+        return $this->belongsTo(HabilidadBlanda::class, 'habilidad_id')->withDefault([
+            'nombre' => 'Sin habilidad asignada',
+            'descripcion' => ''
+        ]);
+    }
+
+    // ✅ RELACIÓN CON DETALLES (hasMany - ESTA FALTABA)
+    public function detalles()
+    {
+        return $this->hasMany(DetallePlanificacion::class, 'planificacion_id');
+    }
+
+    // ✅ RELACIÓN CON EVALUACIONES
+    public function evaluaciones()
+    {
+        return $this->hasMany(Evaluacion::class, 'planificacion_id');
+    }
+
+    // ✅ RELACIÓN CON REPORTE (si existe)
+    public function reporte()
+    {
+        return $this->hasOne(Reporte::class, 'planificacion_id');
     }
 }

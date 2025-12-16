@@ -1,313 +1,491 @@
-// src/components/PlanificacionDocente.jsx
-
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import Swal from 'sweetalert2';
 import CustomSelect from './ui/CustomSelect';
 import { 
     BookOpenIcon, SparklesIcon, UserGroupIcon, 
-    CheckBadgeIcon, CalendarDaysIcon, ArrowRightIcon,
-    ClockIcon, CheckCircleIcon // Agregamos este ícono
+    CheckBadgeIcon, CalendarDaysIcon, ClockIcon, CheckCircleIcon,
+    CursorArrowRaysIcon, PencilSquareIcon 
 } from '@heroicons/react/24/outline';
+
+// --- CATÁLOGO OFICIAL SEGÚN GUÍA METODOLÓGICA (Págs. 14-15) ---
+const CATALOGO_GUIA = {
+    // 1. Habilidades Transversales
+    'Comunicación Efectiva': [
+        'Debates y mesas redondas',
+        'Presentaciones orales y proyectos grupales',
+        'Simulaciones y dramatizaciones',
+        'Análisis de discursos y textos'
+    ],
+    'Resolución de Problemas': [
+        'Observación directa',
+        'Estudio de casos',
+        'Debates y discusiones',
+        'Simulaciones y role-playing',
+        'Proyectos colaborativos',
+        'Autoevaluación y reflexión',
+        'Autoevaluación y coevaluación',
+        'Análisis de productos grupales',
+        'Autoevaluación'
+    ],
+    'Trabajo en Equipo': [
+        'Observación directa',
+        'Estudio de casos',
+        'Debates y discusiones',
+        'Simulaciones y role-playing',
+        'Proyectos colaborativos',
+        'Autoevaluación y reflexión',
+        'Autoevaluación y coevaluación',
+        'Análisis de productos grupales',
+        'Autoevaluación'
+    ],
+    'Gestión del Tiempo': [
+        'Observación directa',
+        'Análisis de resultados',
+        'Retroalimentación de pares',
+        'Uso de indicadores de desempeño'
+    ],
+
+    // 2. Unidad Básica
+    'Adaptabilidad': [
+        'Aprendizaje basado en problemas',
+        'Simulación de escenarios cambiantes',
+        'Proyectos interdisciplinarios',
+        'Uso de metodologías activas-aulas invertidas',
+        'Problemas abiertos con recursos limitados',
+        'Promover la experimentación y el manejo del error'
+    ],
+    'Aprender a Aprender': [
+        'Aprendizaje basado en problemas',
+        'Simulación de escenarios cambiantes',
+        'Proyectos interdisciplinarios',
+        'Uso de metodologías activas-aulas invertidas',
+        'Problemas abiertos con recursos limitados',
+        'Promover la experimentación y el manejo del error'
+    ],
+
+    // 3. Unidad Profesional
+    'Asertividad': [
+        'Debates y discusiones guiadas',
+        'Sesiones de preguntas y respuestas activas',
+        'Análisis de casos',
+        'Proyectos de innovación',
+        'Evaluación del proceso creativo',
+        'Presentaciones orales y exposiciones de proyectos'
+    ],
+    'Creatividad': [
+        'Debates y discusiones guiadas',
+        'Sesiones de preguntas y respuestas activas',
+        'Análisis de casos',
+        'Proyectos de innovación',
+        'Evaluación del proceso creativo',
+        'Presentaciones orales y exposiciones de proyectos'
+    ],
+    'Pensamiento Crítico': [
+        'Feedback constructivo en procesos creativos',
+        'Análisis de casos',
+        'Debates estructurados',
+        'Ensayos reflexivos',
+        'Simulación de tomas de decisiones',
+        'Cuestionarios de autoevaluación'
+    ],
+
+    // 4. Unidad de Integración Curricular
+    'Liderazgo': [
+        'Rubricas de evaluación de liderazgo en actividades colaborativas',
+        'Autoevaluación y metacognición',
+        'Portafolios reflexivos',
+        'Evaluación entre pares',
+        'Simulación y estudios de caso',
+        'Problemas abiertos y desestructurados',
+        'Estudio de casos o escenarios reales',
+        'Depuración de código ajeno'
+    ],
+    'Toma de Decisiones': [
+        'Rubricas de evaluación de liderazgo en actividades colaborativas',
+        'Autoevaluación y metacognición',
+        'Portafolios reflexivos',
+        'Evaluación entre pares',
+        'Simulación y estudios de caso',
+        'Problemas abiertos y desestructurados',
+        'Estudio de casos o escenarios reales',
+        'Depuración de código ajeno'
+    ],
+    'Autocontrol': [ // Asignadas por pertenecer a la Unidad de Integración Curricular
+        'Rubricas de evaluación de liderazgo en actividades colaborativas',
+        'Autoevaluación y metacognición',
+        'Portafolios reflexivos',
+        'Evaluación entre pares',
+        'Simulación y estudios de caso',
+        'Problemas abiertos y desestructurados',
+        'Estudio de casos o escenarios reales',
+        'Depuración de código ajeno'
+    ]
+};
 
 const PlanificacionDocente = () => {
     const [misAsignaturas, setMisAsignaturas] = useState([]);
-    const [habilidades, setHabilidades] = useState([]);
     const [estudiantes, setEstudiantes] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    // Formulario
+    const [habilidadesAsignadas, setHabilidadesAsignadas] = useState([]);
     const [form, setForm] = useState({
         asignatura_id: '',
-        habilidad_blanda_id: '',
         parcial: '1',
-        periodo_academico: '' 
+        periodo_academico: '',
     });
 
-    // Helper: Buscar la materia completa para sacar datos visuales y de estado
-    const materiaSeleccionada = misAsignaturas.find(a => a.id == form.asignatura_id);
+    const [opcionesPorHabilidad, setOpcionesPorHabilidad] = useState({});
+    const [seleccionActividades, setSeleccionActividades] = useState({});
+    const [esEdicion, setEsEdicion] = useState(false);
 
-    // Helper: Determinar si el parcial seleccionado ya tiene planificación
-    const parcialSeleccionadoPlanificado = materiaSeleccionada 
-        ? (form.parcial === '1' && materiaSeleccionada.planificacion_p1) || 
-          (form.parcial === '2' && materiaSeleccionada.planificacion_p2) 
-        : false;
+    const materiaSeleccionada = misAsignaturas.find(a => a.id == form.asignatura_id);
 
     // 1. CARGA INICIAL
     useEffect(() => {
-        const cargarDatos = async () => {
-            try {
-                const resAsig = await api.get('/docente/asignaturas');
-                setMisAsignaturas(Array.isArray(resAsig.data) ? resAsig.data : []);
-
-                const resHab = await api.get('/habilidades');
-                setHabilidades(Array.isArray(resHab.data) ? resHab.data : []);
-            } catch (error) {
-                console.error("Error cargando datos", error);
-            }
-        };
-        cargarDatos();
+        api.get('/docente/asignaturas').then(res => {
+            setMisAsignaturas(Array.isArray(res.data) ? res.data : []);
+        });
     }, []);
 
-    // 2. LOGICA: AL CAMBIAR MATERIA, ACTUALIZAR PERIODO y mantener el parcial por defecto
+    // 2. EFECTO: Recarga al cambiar Materia o Parcial
+    useEffect(() => {
+        if (form.asignatura_id && form.parcial) {
+            cargarDatosPlanificacion();
+        }
+    }, [form.asignatura_id, form.parcial]);
+
     const handleCambioMateria = (val) => {
         const materia = misAsignaturas.find(m => m.id == val);
-        
-        // Determinar el primer parcial disponible
         let nuevoParcial = '1';
-        if (materia) {
-            if (materia.planificacion_p1 && !materia.planificacion_p2) {
-                nuevoParcial = '2'; // Si P1 está listo, sugerir P2
-            } else if (materia.planificacion_p1 && materia.planificacion_p2) {
-                // Si ambos están listos, mantener P1 o el que estuviera seleccionado
-            }
-        }
+        // Auto-seleccionar parcial 2 si el 1 ya está listo
+        if (materia && materia.planificacion_p1 && !materia.planificacion_p2) nuevoParcial = '2';
 
-        setForm({
-            ...form,
+        setForm(prev => ({
+            ...prev,
             asignatura_id: val,
             periodo_academico: materia ? materia.periodo : '',
-            parcial: nuevoParcial // Usamos el nuevo parcial sugerido
+            parcial: nuevoParcial
+        }));
+        
+        if(val) cargarEstudiantes(val);
+    };
+
+    const cargarDatosPlanificacion = async () => {
+        // Limpieza visual
+        setHabilidadesAsignadas([]);
+        setSeleccionActividades({});
+        setEsEdicion(false);
+
+        try {
+            const res = await api.get(`/planificaciones/verificar/${form.asignatura_id}?parcial=${form.parcial}`);
+            
+            if (res.data.tiene_asignacion) {
+                const habilidades = res.data.habilidades;
+                const guardadas = res.data.actividades_guardadas || {};
+                const esModoEdicion = res.data.es_edicion;
+
+                setHabilidadesAsignadas(habilidades);
+                setEsEdicion(esModoEdicion);
+
+                const opcionesMap = {};
+                const seleccionMap = {};
+
+                habilidades.forEach(h => {
+                    // --- CORRECCIÓN DE MATCHING (Lógica mejorada) ---
+                    const nombreBD = h.nombre.trim();
+                    let listaOpciones = [];
+
+                    // 1. Buscamos coincidencia exacta en el Catálogo
+                    if (CATALOGO_GUIA[nombreBD]) {
+                        listaOpciones = CATALOGO_GUIA[nombreBD];
+                    } 
+                    // 2. Si no, buscamos ignorando mayúsculas/minúsculas o tildes
+                    else {
+                        const keyEncontrada = Object.keys(CATALOGO_GUIA).find(k => 
+                            k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === 
+                            nombreBD.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                        );
+                        if (keyEncontrada) {
+                            listaOpciones = CATALOGO_GUIA[keyEncontrada];
+                        } else {
+                            // 3. Fallback solo si realmente no existe en la guía
+                            listaOpciones = ['Actividad sugerida por defecto'];
+                        }
+                    }
+
+                    opcionesMap[h.id] = listaOpciones;
+                    
+                    // Cargar selección guardada o vacía
+                    seleccionMap[h.id] = (esModoEdicion && guardadas[h.id]) ? guardadas[h.id] : [];
+                });
+
+                setOpcionesPorHabilidad(opcionesMap);
+                setSeleccionActividades(seleccionMap);
+
+                if (esModoEdicion) {
+                    const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000});
+                    Toast.fire({icon: 'info', title: `Cargada planificación P${form.parcial}`});
+                }
+
+            } else {
+                Swal.fire('Información', res.data.message || 'Materia sin configuración.', 'info');
+            }
+        } catch (error) {
+            console.error("Error cargando planificación:", error);
+        }
+    };
+
+    const cargarEstudiantes = (asignaturaId) => {
+        setLoading(true);
+        api.get(`/docente/estudiantes/${asignaturaId}`)
+            .then(res => setEstudiantes(res.data))
+            .finally(() => setLoading(false));
+    };
+
+    const toggleActividad = (habilidadId, actividad) => {
+        setSeleccionActividades(prev => {
+            const seleccionadas = prev[habilidadId] || [];
+            if (seleccionadas.includes(actividad)) {
+                return { ...prev, [habilidadId]: seleccionadas.filter(a => a !== actividad) };
+            } else {
+                return { ...prev, [habilidadId]: [...seleccionadas, actividad] };
+            }
         });
     };
-    
-    // Manejar el cambio de parcial
-    const handleCambioParcial = (val) => {
-        setForm(prev => ({ ...prev, parcial: val }));
-    }
 
-
-    // 3. CARGAR ESTUDIANTES
-    useEffect(() => {
-        if (form.asignatura_id) {
-            setLoading(true);
-            api.get(`/docente/estudiantes/${form.asignatura_id}`)
-                .then(res => setEstudiantes(res.data))
-                .catch(() => setEstudiantes([]))
-                .finally(() => setLoading(false));
-        } else {
-            setEstudiantes([]);
-        }
-    }, [form.asignatura_id]);
-
-    // 4. GUARDAR
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        if (parcialSeleccionadoPlanificado) {
-             Swal.fire('Atención', `El Parcial ${form.parcial} de esta materia ya fue planificado.`, 'warning');
-             return;
+        if (!form.asignatura_id) return Swal.fire('Atención', 'Selecciona una asignatura.', 'warning');
+        if (habilidadesAsignadas.length === 0) return Swal.fire('Error', 'No hay habilidades.', 'error');
+        
+        const userStr = localStorage.getItem('user');
+        if (!userStr) return Swal.fire('Error', 'Sesión inválida.', 'error');
+        const user = JSON.parse(userStr);
+
+        for (let h of habilidadesAsignadas) {
+            if (!seleccionActividades[h.id] || seleccionActividades[h.id].length === 0) {
+                return Swal.fire('Faltan datos', `Selecciona actividades para: ${h.nombre}`, 'warning');
+            }
         }
-        
-        const user = JSON.parse(localStorage.getItem('user'));
-        
+
+        const detalles = habilidadesAsignadas.map(hab => ({
+            habilidad_blanda_id: hab.id,
+            actividades: seleccionActividades[hab.id].join('\n') 
+        }));
+
         try {
             await api.post('/planificaciones', {
-                ...form,
-                docente_id: user.id
+                asignatura_id: form.asignatura_id,
+                docente_id: user.id,
+                parcial: form.parcial,
+                periodo_academico: form.periodo_academico || 'Periodo Actual',
+                detalles: detalles
             });
             
             Swal.fire({
-                title: '¡Planificación Exitosa!',
-                text: `Habilidad asignada para el Parcial ${form.parcial} del periodo ${form.periodo_academico}.`,
-                icon: 'success',
-                confirmButtonColor: '#2563EB'
+                title: esEdicion ? '¡Actualizado!' : '¡Guardado!',
+                text: `Planificación del Parcial ${form.parcial} registrada correctamente.`,
+                icon: 'success'
             });
             
-            // Actualizar la lista de asignaturas para reflejar la nueva planificación
-            const resAsig = await api.get('/docente/asignaturas');
-            setMisAsignaturas(Array.isArray(resAsig.data) ? resAsig.data : []);
-            
-            // Resetear el formulario (manteniendo la asignatura y el nuevo estado)
-            setForm(prev => ({ 
-                ...prev, 
-                habilidad_blanda_id: '',
-            }));
+            api.get('/docente/asignaturas').then(res => {
+                setMisAsignaturas(Array.isArray(res.data) ? res.data : []);
+            });
+            setEsEdicion(true); 
             
         } catch (error) {
-            const msg = error.response?.data?.message || 'Error al guardar.';
-            Swal.fire('Atención', msg, 'warning');
+            const msj = error.response?.data?.message || 'Error al guardar.';
+            Swal.fire('Error', msj, 'error');
         }
     };
 
-    // Opciones para CustomSelect
-    const opcionesAsignaturas = misAsignaturas.map(a => {
-        const estadoP1 = a.planificacion_p1 ? 'P1 ✔️' : 'P1 ❌';
-        const estadoP2 = a.planificacion_p2 ? 'P2 ✔️' : 'P2 ❌';
-        const estaCompleta = a.planificacion_p1 && a.planificacion_p2;
-
-        return {
-            value: a.id,
-            label: a.nombre,
-            subtext: `${a.carrera} (${a.paralelo}) - ${a.periodo} | ${estadoP1} | ${estadoP2}`,
-            icon: estaCompleta ? CheckCircleIcon : null, // Muestra un ícono si está completa
-            iconClass: 'text-green-500' // Color para el ícono de completado
-        };
-    });
+    // Opciones visuales
+    const opcionesAsignaturas = misAsignaturas.map(a => ({
+        value: a.id,
+        label: a.nombre,
+        subtext: `${a.carrera} (${a.paralelo}) | P1:${a.planificacion_p1?'Ok':'-'} P2:${a.planificacion_p2?'Ok':'-'}`,
+        icon: (a.planificacion_p1 && a.planificacion_p2) ? CheckCircleIcon : null
+    }));
 
     const opcionesParciales = [
-        { 
-            value: '1', 
-            label: 'Primer Parcial',
-            // Deshabilitar si ya está planificado
-            disabled: materiaSeleccionada ? materiaSeleccionada.planificacion_p1 : false
-        },
-        { 
-            value: '2', 
-            label: 'Segundo Parcial',
-            // Deshabilitar si ya está planificado
-            disabled: materiaSeleccionada ? materiaSeleccionada.planificacion_p2 : false
-        }
+        { value: '1', label: 'Primer Parcial' },
+        { value: '2', label: 'Segundo Parcial' }
     ];
-
-    const opcionesHabilidades = habilidades.map(h => ({
-        value: h.id,
-        label: h.nombre
-    }));
 
     return (
         <div className="space-y-6 animate-fade-in">
-            <div>
-                <h2 className="text-2xl font-bold text-gray-900">Mis Habilidades</h2>
-                <p className="text-gray-500 text-sm mt-1">Planifica la competencia blanda para cada parcial.</p>
+            <div className="flex justify-between items-center">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Planificación de Habilidades</h2>
+                    <p className="text-gray-500 text-sm mt-1">Gestiona las actividades oficiales de la Guía Académica.</p>
+                </div>
+                {esEdicion && (
+                    <span className="bg-amber-100 text-amber-700 px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 border border-amber-200 animate-pulse">
+                        <PencilSquareIcon className="h-5 w-5"/>
+                        Editando Parcial {form.parcial}
+                    </span>
+                )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                
-                {/* --- CONFIGURACIÓN --- */}
+                {/* --- FORMULARIO --- */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden h-fit">
-                        <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-blue-50 rounded-full opacity-50 blur-xl"></div>
-
-                        <form onSubmit={handleSubmit} className="space-y-5 relative z-10">
-                            
+                    <form onSubmit={handleSubmit}>
+                        <div className={`p-6 rounded-2xl shadow-sm border mb-6 space-y-4 transition-colors ${esEdicion ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'}`}>
                             <CustomSelect 
-                                label="Selecciona tu Asignatura"
+                                label="1. Selecciona tu Asignatura"
                                 icon={BookOpenIcon}
                                 placeholder="-- Elegir materia --"
                                 options={opcionesAsignaturas}
                                 value={form.asignatura_id}
                                 onChange={handleCambioMateria}
                             />
-                            {misAsignaturas.length === 0 && (
-                                <p className="text-xs text-orange-500 ml-1">* No tienes asignaciones.</p>
-                            )}
-                            {materiaSeleccionada && materiaSeleccionada.planificacion_p1 && materiaSeleccionada.planificacion_p2 && (
-                                <div className="p-3 bg-green-50 rounded-xl border border-green-100 text-sm text-green-700 animate-fade-in font-medium flex items-center gap-2">
-                                    <CheckCircleIcon className="h-5 w-5"/>
-                                    ¡Planificación completa! Ambos parciales han sido asignados.
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className={`transition-all duration-300 ${form.asignatura_id ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
-                                    <CustomSelect 
-                                        label="Parcial a Evaluar"
-                                        icon={ClockIcon}
-                                        options={opcionesParciales}
-                                        value={form.parcial}
-                                        onChange={handleCambioParcial}
-                                        disabled={!form.asignatura_id}
-                                    />
-                                    {parcialSeleccionadoPlanificado && (
-                                        <p className="text-xs text-red-500 ml-1 mt-1 font-medium">
-                                            * Este parcial ya fue planificado.
-                                        </p>
-                                    )}
-                                </div>
-
-                                <div className={`transition-all duration-300 ${form.asignatura_id ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
-                                    <CustomSelect 
-                                        label="Habilidad"
-                                        icon={SparklesIcon}
-                                        placeholder="-- Elegir habilidad --"
-                                        options={opcionesHabilidades}
-                                        value={form.habilidad_blanda_id}
-                                        onChange={(val) => setForm({...form, habilidad_blanda_id: val})}
-                                        disabled={!form.asignatura_id}
-                                    />
+                            
+                            <div className={`grid grid-cols-2 gap-4 transition-all ${form.asignatura_id ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                                <CustomSelect 
+                                    label="2. Parcial"
+                                    icon={ClockIcon}
+                                    options={opcionesParciales}
+                                    value={form.parcial}
+                                    onChange={(val) => setForm(prev => ({ ...prev, parcial: val }))} 
+                                />
+                                <div className="bg-white border border-gray-200 rounded-xl p-3 flex flex-col justify-center">
+                                    <span className="text-xs font-bold text-gray-400 uppercase mb-1">Periodo Académico</span>
+                                    <span className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                                        <CalendarDaysIcon className="h-4 w-4"/> 
+                                        {form.periodo_academico || '...'}
+                                    </span>
                                 </div>
                             </div>
+                        </div>
 
-                            {form.habilidad_blanda_id && (
-                                <div className="p-4 bg-purple-50 rounded-xl border border-purple-100 text-sm text-purple-800 animate-fade-in">
-                                    <strong>Definición:</strong> {habilidades.find(h => h.id == form.habilidad_blanda_id)?.definicion}
-                                </div>
-                            )}
+                        {/* LISTA DE HABILIDADES */}
+                        {habilidadesAsignadas.length > 0 ? (
+                            <div className="space-y-6">
+                                <h3 className="font-bold text-gray-700 flex items-center gap-2 px-1 text-lg">
+                                    <SparklesIcon className="h-6 w-6 text-purple-600"/>
+                                    3. Habilidades ({habilidadesAsignadas.length})
+                                </h3>
+                                
+                                {habilidadesAsignadas.map((hab, index) => (
+                                    <div key={hab.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden">
+                                        <div className="absolute top-0 left-0 w-1.5 h-full bg-purple-500"></div>
+                                        
+                                        <div className="mb-4">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-xs font-bold text-purple-600 uppercase tracking-wide bg-purple-50 px-2 py-1 rounded">
+                                                    #{index + 1} {hab.nombre}
+                                                </span>
+                                            </div>
+                                            {hab.definicion && (
+                                                <p className="text-sm text-gray-500 italic mt-1 bg-gray-50 p-2 rounded border border-gray-100">
+                                                    "{hab.definicion}"
+                                                </p>
+                                            )}
+                                        </div>
 
-                            {/* Campo de Periodo (Automático) */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Periodo Académico (Automático)</label>
-                                <div className="flex items-center gap-2 text-gray-700 bg-gray-50 px-4 py-3 rounded-xl border border-gray-200 w-full text-sm font-medium">
-                                    <CalendarDaysIcon className="h-5 w-5 text-blue-500"/>
-                                    {form.periodo_academico || "Selecciona una materia..."}
+                                        <div className="mt-4">
+                                            <label className="block text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                                <CursorArrowRaysIcon className="h-5 w-5 text-blue-600"/> 
+                                                Actividades según Guía Metodológica:
+                                            </label>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                {opcionesPorHabilidad[hab.id]?.map((actividad, i) => {
+                                                    const isSelected = (seleccionActividades[hab.id] || []).includes(actividad);
+                                                    return (
+                                                        <label 
+                                                            key={i} 
+                                                            className={`
+                                                                flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all
+                                                                ${isSelected
+                                                                    ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500'
+                                                                    : 'bg-white border-gray-200 hover:bg-gray-50'
+                                                                }
+                                                            `}
+                                                        >
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                                checked={isSelected}
+                                                                onChange={() => toggleActividad(hab.id, actividad)}
+                                                            />
+                                                            <span className={`text-xs md:text-sm ${isSelected ? 'text-blue-800 font-medium' : 'text-gray-600'}`}>
+                                                                {actividad}
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                <div className="pt-4 pb-8">
+                                    <button 
+                                        type="submit" 
+                                        className={`w-full font-bold py-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg transform hover:-translate-y-0.5 active:translate-y-0 ${esEdicion ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                                    >
+                                        {esEdicion ? (
+                                            <><PencilSquareIcon className="h-6 w-6"/> Actualizar Planificación P{form.parcial}</>
+                                        ) : (
+                                            <><CheckBadgeIcon className="h-6 w-6"/> Guardar Planificación P{form.parcial}</>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
-
-                            <div className="pt-2">
-                                <button 
-                                    type="submit" 
-                                    disabled={!form.asignatura_id || !form.habilidad_blanda_id || !form.periodo_academico || parcialSeleccionadoPlanificado}
-                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 transition transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
-                                >
-                                    <CheckBadgeIcon className="h-6 w-6" />
-                                    {parcialSeleccionadoPlanificado ? 'Parcial Ya Planificado' : 'Guardar Planificación'}
-                                </button>
+                        ) : form.asignatura_id && (
+                            <div className="p-10 bg-gray-50 border border-gray-200 border-dashed rounded-xl text-center flex flex-col items-center justify-center h-64">
+                                <SparklesIcon className="h-10 w-10 text-gray-300 mb-2"/>
+                                <p className="text-gray-500 font-medium">Esta materia no tiene habilidades asignadas.</p>
                             </div>
-                        </form>
-                    </div>
+                        )}
+                    </form>
                 </div>
 
-                {/* --- NÓMINA --- */}
+                {/* --- DERECHA: NÓMINA --- */}
                 <div className="lg:col-span-1">
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 h-full flex flex-col overflow-hidden min-h-[500px]">
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 h-full flex flex-col overflow-hidden max-h-[800px] sticky top-6">
                         <div className="p-5 border-b border-gray-100 bg-gray-50">
                             <h3 className="font-bold text-gray-800 flex items-center gap-2">
                                 <UserGroupIcon className="h-5 w-5 text-blue-600"/>
-                                Nómina de Estudiantes
+                                Estudiantes
                             </h3>
                             {materiaSeleccionada && (
                                 <p className="text-xs text-gray-500 mt-1">
-                                    {materiaSeleccionada.carrera} - Ciclo {materiaSeleccionada.ciclo}
+                                    {materiaSeleccionada.carrera} {materiaSeleccionada.paralelo}
                                 </p>
                             )}
                         </div>
-                        
-                        <div className="flex-1 overflow-y-auto p-0 max-h-[500px]">
+                        <div className="flex-1 overflow-y-auto p-0 scrollbar-thin">
                             {loading ? (
-                                <div className="p-10 text-center text-gray-400 text-sm">Cargando lista...</div>
-                            ) : !form.asignatura_id ? (
-                                <div className="p-10 text-center text-gray-400 text-sm flex flex-col items-center mt-10">
-                                    <ArrowRightIcon className="h-8 w-8 mb-2 opacity-20"/>
-                                    Selecciona una asignatura.
-                                </div>
-                            ) : estudiantes.length === 0 ? (
-                                <div className="p-8 text-center text-red-400 text-sm bg-red-50 m-4 rounded-xl border border-red-100">
-                                    Sin estudiantes registrados.
-                                </div>
-                            ) : (
+                                <div className="p-10 text-center text-gray-400">Cargando...</div>
+                            ) : estudiantes.length > 0 ? (
                                 <ul className="divide-y divide-gray-50">
-                                    {estudiantes.map((est, index) => (
+                                    {estudiantes.map((est, i) => (
                                         <li key={est.id} className="px-5 py-3 flex items-center gap-3 hover:bg-blue-50 transition">
-                                            <span className="text-xs font-bold text-gray-300 w-5">{index + 1}</span>
-                                            <div className="h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold border border-indigo-200">
-                                                {est.nombres.charAt(0)}
-                                            </div>
+                                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-xs font-bold text-gray-500">
+                                                {i+1}
+                                            </span>
                                             <div>
-                                                <p className="text-sm font-medium text-gray-800">{est.nombres} {est.apellidos}</p>
+                                                <div className="text-sm font-bold text-gray-700">
+                                                    {est.apellidos} {est.nombres}
+                                                </div>
+                                                <div className="text-[10px] text-gray-400">{est.email}</div>
                                             </div>
                                         </li>
                                     ))}
                                 </ul>
+                            ) : (
+                                <div className="p-10 text-center text-gray-400 text-sm">
+                                    Selecciona una materia.
+                                </div>
                             )}
-                        </div>
-                        
-                        <div className="p-3 bg-gray-50 border-t border-gray-100 text-center text-xs text-gray-500 font-medium">
-                            Total: {estudiantes.length} alumnos
                         </div>
                     </div>
                 </div>
-
             </div>
         </div>
     );

@@ -15,7 +15,7 @@ const GestionAsignaturas = () => {
     
     // Filtros
     const [busqueda, setBusqueda] = useState('');
-    const [filtroUnidad, setFiltroUnidad] = useState(''); // Filtro clave solicitado
+    const [filtroUnidad, setFiltroUnidad] = useState(''); 
     const [filtroCarrera, setFiltroCarrera] = useState('');
 
     // Formulario
@@ -56,15 +56,22 @@ const GestionAsignaturas = () => {
     const handleGuardar = async (e) => {
         e.preventDefault();
         try {
-            if (isEditing) await api.put(`/asignaturas/${form.id}`, form);
-            else await api.post('/asignaturas', form);
+            if (isEditing) {
+                await api.put(`/asignaturas/${form.id}`, form);
+                Swal.fire({ title: 'Actualizado', icon: 'success', timer: 1500, showConfirmButton: false });
+            } else {
+                await api.post('/asignaturas', form);
+                Swal.fire({ title: 'Registrado', icon: 'success', timer: 1500, showConfirmButton: false });
+            }
             
-            Swal.fire({ title: 'Guardado', icon: 'success', timer: 1500, showConfirmButton: false });
             setShowModal(false);
             fetchAsignaturas();
-        } catch (error) { Swal.fire('Error', 'Verifique los datos.', 'error'); }
-    };
-
+        } catch (error) {
+            // Capturar el mensaje personalizado del backend
+            const msg = error.response?.data?.message || 'Error al guardar. Verifique los datos.';
+            Swal.fire('Atención', msg, 'warning'); // Usamos 'warning' para duplicados
+        }
+    }
     const handleEliminar = (id) => {
         Swal.fire({
             title: '¿Eliminar asignatura?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#EF4444', confirmButtonText: 'Sí'
@@ -126,7 +133,6 @@ const GestionAsignaturas = () => {
                         placeholder="Buscar materia..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
                 </div>
                 
-                {/* Filtro Unidad Curricular */}
                 <div className="w-full md:w-64">
                     <select value={filtroUnidad} onChange={(e) => setFiltroUnidad(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-white outline-none text-sm text-gray-600">
                         <option value="">Todas las Unidades</option>
@@ -136,7 +142,6 @@ const GestionAsignaturas = () => {
                     </select>
                 </div>
 
-                {/* Filtro Carrera */}
                 <div className="w-full md:w-48">
                     <select value={filtroCarrera} onChange={(e) => setFiltroCarrera(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-white outline-none text-sm text-gray-600">
                         <option value="">Todas las Carreras</option>
@@ -239,7 +244,7 @@ const GestionAsignaturas = () => {
                 </div>
             )}
 
-            {/* MODAL IMPORTAR */}
+            {/* MODAL IMPORTAR CON ESTRUCTURA */}
             {showImportModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 animate-fade-in">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
@@ -247,10 +252,24 @@ const GestionAsignaturas = () => {
                             <CloudArrowUpIcon className="h-8 w-8 text-green-600" />
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 mb-2">Importar Materias</h3>
-                        <p className="text-sm text-gray-500 mb-6">
-                            CSV con formato:<br/>
-                            <span className="font-mono bg-gray-100 px-1 text-xs">Nombre, Carrera, Ciclo, Unidad Curricular</span>
+                        <p className="text-sm text-gray-500 mb-4">
+                            Sube un archivo <b>.CSV</b> separado por comas.
                         </p>
+
+                        {/* --- ESTRUCTURA REQUERIDA --- */}
+                        <div className="bg-slate-100 p-4 rounded-xl mb-6 text-left border border-slate-200">
+                            <p className="text-xs font-bold text-slate-500 uppercase mb-2">Estructura requerida (Encabezados):</p>
+                            <div className="bg-white p-2 rounded border border-slate-300 overflow-x-auto">
+                                <code className="text-xs font-mono text-blue-600 whitespace-nowrap">
+                                    Nombre,Carrera,Ciclo,Unidad
+                                </code>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-2">
+                                * Ejemplo: "Programación I",Software,I,Unidad Básica<br/>
+                                * Sin tildes en los encabezados preferiblemente.
+                            </p>
+                        </div>
+
                         <input type="file" accept=".csv" onChange={(e) => setFileToUpload(e.target.files[0])} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-green-50 file:text-green-700 hover:file:bg-green-100 mb-6" />
                         <div className="flex gap-3">
                             <button onClick={() => setShowImportModal(false)} className="flex-1 py-2 bg-gray-100 rounded-lg">Cancelar</button>

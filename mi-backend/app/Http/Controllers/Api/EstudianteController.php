@@ -4,98 +4,140 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Estudiante;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class EstudianteController extends Controller
 {
-    // Listar estudiantes
     public function index()
     {
-        return Estudiante::orderBy('id', 'desc')->get();
+        return Estudiante::all();
     }
 
-    // Crear estudiante manual
     public function store(Request $request)
     {
         $request->validate([
-            'nombres' => 'required|string',
-            'apellidos' => 'required|string',
+            'cedula' => 'required|unique:estudiantes,cedula',
+            'nombres' => 'required',
+            'apellidos' => 'required',
             'email' => 'required|email|unique:estudiantes,email',
-            'carrera' => 'required|string',
-            'ciclo_actual' => 'required|string',
+            'carrera' => 'required',
+            'ciclo_actual' => 'required'
         ]);
-
+        if (User::where('cedula', $request->cedula)->exists()) {
+            return response()->json([
+                'message' => 'Esta cédula ya está registrada como Personal Administrativo/Docente.'
+            ], 422);
+        }
         $estudiante = Estudiante::create($request->all());
-
-        return response()->json(['message' => 'Estudiante creado', 'data' => $estudiante]);
+        return response()->json($estudiante, 201);
     }
 
-    // Eliminar estudiante
-    public function destroy($id)
+    public function update(Request $request, $id)
     {
         $estudiante = Estudiante::findOrFail($id);
-        $estudiante->delete();
-        return response()->json(['message' => 'Estudiante eliminado']);
-    }
-    // Importación Masiva de Estudiantes (CSV)
-    public function import(Request $request)
-    {
+        
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt'
+            'cedula' => 'required|unique:estudiantes,cedula,' . $id,
+            'email' => 'required|email|unique:estudiantes,email,' . $id,
         ]);
 
+        $estudiante->update($request->all());
+        return response()->json($estudiante);
+    }
+
+    public function destroy($id)
+    {
+        Estudiante::destroy($id);
+        return response()->json(['message' => 'Eliminado']);
+    }
+
+    // --- CARGA MASIVA ROBUSTA ---
+public function import(Request $request)
+    {
+        $request->validate(['file' => 'required|file']);
         $file = $request->file('file');
-        $data = array_map('str_getcsv', file($file->getRealPath()));
-        $header = array_shift($data); // Quitar cabecera
+        
+        $contenido = file_get_contents($file->getRealPath());
+        $primerLinea = explode(PHP_EOL, $contenido)[0] ?? '';
+        $separador = str_contains($primerLinea, ';') ? ';' : ',';
+
+        $data = array_map(function($linea) use ($separador) {
+            return str_getcsv($linea, $separador);
+        }, file($file->getRealPath()));
+
+        // MANTENER array_shift SI TU CSV TIENE ENCABEZADOS
+        array_shift($data); 
 
         $count = 0;
-        foreach ($data as $row) {
-            // Estructura CSV: Nombres, Apellidos, Email, Carrera, Ciclo
-            if (count($row) >= 5) {
-                try {
-                    Estudiante::create([
-                        'nombres'      => $row[0],
-                        'apellidos'    => $row[1],
-                        'email'        => $row[2],
-                        'carrera'      => $row[3],
-                        'ciclo_actual' => $row[4],
-                    ]);
-                    $count++;
-                } catch (\Exception $e) {
-                    continue;
+        $actualizados = 0;
+
+        foreach ($data as $index => $row) {
+            if (empty($row) || count($row) < 5) continue;
+
+            try {
+                // --- 1. NORMALIZACIÓN DE DATOS ---
+                
+                // Cédula: Rellenar con ceros
+                $cedulaCSV = trim($row[0]);
+                $cedulaFinal = str_pad($cedulaCSV, 10, '0', STR_PAD_LEFT);
+
+                if (User::where('cedula', $cedulaFinal)->exists()) {
+                    throw new \Exception("La cédula $cedulaFinal ya pertenece a un Docente/Administrativo.");
                 }
+                
+                // Nombres/Apellidos: Primera letra mayúscula (Formato Título)
+                // MB_CASE_TITLE es mejor que ucfirst porque maneja tildes (Á, É, Ñ)
+                $nombresFinal   = mb_convert_case(trim($row[1]), MB_CASE_TITLE, "UTF-8");
+                $apellidosFinal = mb_convert_case(trim($row[2]), MB_CASE_TITLE, "UTF-8");
+                
+                // Email: Siempre minúsculas
+                $emailFinal = strtolower(trim($row[3]));
+
+                // Carrera: Estandarización estricta
+                $carreraRaw = trim($row[4]);
+                $carreraFinal = 'Software'; 
+                if (preg_match('/ti|tecnolog|t\.i/i', $carreraRaw)) {
+                    $carreraFinal = 'TI';
+                }
+
+                // Ciclo: Mayúsculas (ej: "vi" -> "VI")
+                $cicloFinal = strtoupper(trim($row[5]));
+
+
+                // --- 2. BÚSQUEDA ---
+                $estudiante = Estudiante::where('cedula', $cedulaFinal)
+                                        ->orWhere('cedula', $cedulaCSV)
+                                        ->orWhere('email', $emailFinal)
+                                        ->first();
+
+                // --- 3. GUARDADO ---
+                $datosLimpios = [
+                    'cedula'       => $cedulaFinal,
+                    'nombres'      => $nombresFinal,
+                    'apellidos'    => $apellidosFinal,
+                    'email'        => $emailFinal,
+                    'carrera'      => $carreraFinal,
+                    'ciclo_actual' => $cicloFinal
+                ];
+
+                if ($estudiante) {
+                    $estudiante->update($datosLimpios);
+                    $actualizados++;
+                } else {
+                    Estudiante::create($datosLimpios);
+                    $count++;
+                }
+
+            } catch (\Exception $e) {
+                return response()->json([
+                    'message' => "Error Fila " . ($index + 1) . ": " . $e->getMessage()
+                ], 500);
             }
         }
 
-        return response()->json(['message' => "$count estudiantes importados correctamente."]);
+        return response()->json([
+            'message' => "Proceso completado: $count nuevos, $actualizados actualizados con formato corregido."
+        ]);
     }
-    // En EstudianteController.php
-
-public function update(Request $request, $id)
-{
-    // 1. Buscar el estudiante
-    $estudiante = Estudiante::findOrFail($id);
-
-    // 2. Validar
-    $request->validate([
-        'nombres' => 'required|string|max:255',
-        'apellidos' => 'required|string|max:255',
-        
-        // --- AQUÍ ESTÁ EL TRUCO ---
-        // Le decimos: "El email debe ser único en la tabla estudiantes, 
-        // PERO ignora el registro con este $estudiante->id"
-        'email' => 'required|email|unique:estudiantes,email,' . $estudiante->id,
-        
-        'carrera' => 'required|string',
-        'ciclo_actual' => 'required|string',
-    ]);
-
-    // 3. Actualizar
-    $estudiante->update($request->all());
-
-    return response()->json([
-        'message' => 'Estudiante actualizado correctamente',
-        'data' => $estudiante
-    ]);
-}
 }

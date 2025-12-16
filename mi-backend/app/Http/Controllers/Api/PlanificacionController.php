@@ -3,64 +3,114 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Planificacion;
-use App\Models\Asignatura;
-use App\Models\HabilidadBlanda;
 use Illuminate\Http\Request;
+// --- IMPORTACIONES OBLIGATORIAS ---
+use App\Models\Planificacion;
+use App\Models\HabilidadBlanda;
+use App\Models\Asignacion; 
+use App\Models\DetallePlanificacion; 
+use Illuminate\Support\Facades\DB;
 
 class PlanificacionController extends Controller
 {
-    // 1. Obtener datos para llenar los selectores en el Frontend
-    public function datosIniciales()
+    // Verificar habilidades y si ya existe planificación previa (EDICIÓN)
+public function verificar(Request $request, $asignatura_id)
     {
-        return response()->json([
-            'asignaturas' => Asignatura::all(),
-            'habilidades' => HabilidadBlanda::all(),
-        ]);
-    }
+        try {
+            $user = $request->user();
+            
+            // 1. Obtener Asignación y Periodo
+            $asignacion = Asignacion::where('asignatura_id', $asignatura_id)
+                ->where('docente_id', $user->id)
+                ->first();
 
-    // 2. Ver las planificaciones creadas por un docente específico
-    public function index(Request $request)
-    {
-        // En el futuro tomaremos el ID del usuario logueado. 
-        // Por ahora, recibimos 'docente_id' como filtro para probar.
-        $docenteId = $request->query('docente_id');
+            if (!$asignacion) {
+                return response()->json(['tiene_asignacion' => false, 'message' => 'No tienes asignada esta materia.']);
+            }
 
-        $planificaciones = Planificacion::with(['asignatura', 'habilidad'])
-            ->where('docente_id', $docenteId)
-            ->get();
+            // 2. Obtener Habilidades Requeridas
+            $habilidades = HabilidadBlanda::where('asignatura_id', $asignatura_id)->get();
 
-        return response()->json($planificaciones);
-    }
+            if ($habilidades->isEmpty()) {
+                return response()->json(['tiene_asignacion' => false, 'message' => 'Sin habilidades asignadas.']);
+            }
 
-    // 3. Guardar una nueva planificación
-    public function store(Request $request)
-    {
-        $request->validate([
-            'docente_id' => 'required|exists:users,id',
-            'asignatura_id' => 'required|exists:asignaturas,id',
-            'habilidad_blanda_id' => 'required|exists:habilidades_blandas,id',
-            'periodo_academico' => 'required|string',
-            'parcial' => 'required|in:1,2' // <--- Validamos que llegue el parcial
-        ]);
+            // 3. BUSCAR PLANIFICACIÓN ESPECÍFICA (Materia + Docente + Periodo + PARCIAL)
+            
+            // Capturamos el parcial que viene en la URL (?parcial=1)
+            $parcialSolicitado = $request->query('parcial'); 
 
-        // VERIFICACIÓN MANUAL PARA MENSAJE PERSONALIZADO
-        $existe = Planificacion::where('asignatura_id', $request->asignatura_id)
-            ->where('parcial', $request->parcial)
-            ->where('periodo_academico', $request->periodo_academico)
-            ->exists();
+            $query = Planificacion::with('detalles')
+                ->where('asignatura_id', $asignatura_id)
+                ->where('docente_id', $user->id)
+                ->where('periodo_academico', $asignacion->periodo);
 
-        if ($existe) {
+            // Si el frontend nos dice qué parcial quiere ver, filtramos por él.
+            if ($parcialSolicitado) {
+                $query->where('parcial', $parcialSolicitado);
+            } else {
+                // Si no, traemos el último modificado (comportamiento por defecto)
+                $query->latest();
+            }
+
+            $planDocente = $query->first();
+
+            $actividadesGuardadas = [];
+            $esEdicion = false;
+            $parcialGuardado = null;
+
+            if ($planDocente) {
+                $esEdicion = true;
+                $parcialGuardado = $planDocente->parcial;
+                foreach ($planDocente->detalles as $detalle) {
+                    $actividadesGuardadas[$detalle->habilidad_blanda_id] = explode("\n", $detalle->actividades);
+                }
+            }
+
             return response()->json([
-                'message' => 'Error: Ya existe una habilidad planificada para este Parcial en esta materia.'
-            ], 422);
+                'tiene_asignacion' => true,
+                'habilidades' => $habilidades, // Siempre devolvemos las habilidades base
+                'es_edicion' => $esEdicion,
+                'actividades_guardadas' => $actividadesGuardadas, // Solo si existen para este parcial
+                'parcial_guardado' => $parcialGuardado,
+                'periodo_detectado' => $asignacion->periodo
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Error: ' . $e->getMessage()], 500);
         }
+    }
+    // Guardar o Actualizar la planificación
+   public function store(Request $request)
+    {
+        // 1. Validación
+        $request->validate([
+            'asignatura_id' => 'required',
+            'docente_id' => 'required',
+            'parcial' => 'required',
+            'periodo_academico' => 'required',
+            'detalles' => 'required|array', // React envía un array 'detalles'
+        ]);
 
-        $nuevaPlanificacion = Planificacion::create($request->all());
+        return DB::transaction(function () use ($request) {
+            // 2. Guardar Padre (Planificación)
+            $planificacion = Planificacion::create([
+                'asignatura_id' => $request->asignatura_id,
+                'docente_id' => $request->docente_id,
+                'parcial' => $request->parcial,
+                'periodo_academico' => $request->periodo_academico
+            ]);
 
-        return response()->json([
-            'message' => 'Planificación creada exitosamente',
-            'data' => $nuevaPlanificacion
-        ], 201);
+            // 3. Guardar Hijos (Detalles)
+            // Recorremos el array que envió React
+            foreach ($request->detalles as $detalle) {
+                $planificacion->detalles()->create([
+                    'habilidad_blanda_id' => $detalle['habilidad_blanda_id'],
+                    'actividades' => $detalle['actividades']
+                ]);
+            }
+
+            return response()->json(['message' => 'Guardado exitosamente'], 201);
+        });
     }
 }
