@@ -70,8 +70,8 @@ class ReporteController extends Controller
         $request->validate(['asignatura_id' => 'required']);
         $user = $request->user();
 
-        // CORRECCIÓN: Cargar detalles.habilidad para obtener el nombre correcto
-        $planes = Planificacion::with(['asignatura', 'docente', 'detalles.habilidad'])
+        // CORRECCIÓN 1: Cargamos 'detalles.habilidad.catalogo' para llegar al nombre real
+        $planes = Planificacion::with(['asignatura', 'docente', 'detalles.habilidad.catalogo'])
             ->where('asignatura_id', $request->asignatura_id)
             ->where('docente_id', $user->id)
             ->get();
@@ -112,14 +112,17 @@ class ReporteController extends Controller
 
             $reporteDB = Reporte::where('planificacion_id', $plan->id)->first();
 
-            // Extraemos los nombres de las habilidades de los detalles
+            // CORRECCIÓN 2: Extraer nombres desde el catálogo
             $nombresHabilidades = $plan->detalles->map(function($d) {
-                return $d->habilidad->nombre ?? null;
-            })->filter()->implode(', ');
+                // detalle -> habilidad -> catalogo -> nombre
+                return ($d->habilidad && $d->habilidad->catalogo) 
+                    ? $d->habilidad->catalogo->nombre 
+                    : null;
+            })->filter()->unique()->implode(', ');
 
             $reportes[] = [
                 'planificacion_id' => $plan->id,
-                'habilidad' => $nombresHabilidades ?: 'Sin Habilidad Definida', // Usamos el nombre extraído
+                'habilidad' => $nombresHabilidades ?: 'Sin Habilidad Definida',
                 'parcial_asignado' => $plan->parcial,
                 'estadisticas' => $conteos, 
                 'detalle_p1' => $listaP1,
@@ -148,7 +151,7 @@ class ReporteController extends Controller
         });
     }
 
-    // --- REPORTE GENERAL PARA EL COORDINADOR (CORREGIDO) ---
+    // --- REPORTE GENERAL PARA EL COORDINADOR ---
     public function reporteGeneral(Request $request)
     {
         // 1. Filtros
@@ -172,8 +175,8 @@ class ReporteController extends Controller
 
         // 3. Procesar datos para el reporte
         $reporte = $asignaciones->map(function($asig) {
-            // Buscamos planificación CARGANDO LOS DETALLES y HABILIDADES
-            $plan = Planificacion::with('detalles.habilidad') // <--- CAMBIO AQUÍ
+            // CORRECCIÓN 3: Cargar relación profunda 'detalles.habilidad.catalogo'
+            $plan = Planificacion::with('detalles.habilidad.catalogo') 
                 ->where('docente_id', $asig->docente_id)
                 ->where('asignatura_id', $asig->asignatura_id)
                 ->where('periodo_academico', $asig->periodo)
@@ -182,12 +185,14 @@ class ReporteController extends Controller
 
             $estado = 'Sin Planificar';
             $progreso = 0;
-            $habilidadTexto = '---'; // Valor por defecto
+            $habilidadTexto = '---'; 
 
             if ($plan) {
-                // CORRECCIÓN: Extraer nombres de las habilidades de la tabla detalle
+                // CORRECCIÓN 4: Acceder al nombre a través del catálogo
                 $nombres = $plan->detalles->map(function($detalle) {
-                    return $detalle->habilidad ? $detalle->habilidad->nombre : null;
+                    return ($detalle->habilidad && $detalle->habilidad->catalogo) 
+                        ? $detalle->habilidad->catalogo->nombre 
+                        : null;
                 })->filter()->unique()->implode(', ');
 
                 $habilidadTexto = $nombres ?: 'Sin Habilidades Asignadas';
@@ -216,7 +221,7 @@ class ReporteController extends Controller
                 'ciclo' => $asig->asignatura->ciclo,
                 'asignatura' => $asig->asignatura->nombre,
                 'docente' => $nombreDocente,
-                'habilidad' => $habilidadTexto, // <--- Usamos el texto corregido
+                'habilidad' => $habilidadTexto, // Ahora sí tendrá el nombre correcto
                 'estado' => $estado,
                 'progreso' => $progreso,
                 'periodo' => $asig->periodo

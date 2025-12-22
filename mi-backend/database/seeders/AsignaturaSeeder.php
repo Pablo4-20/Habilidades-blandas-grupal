@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
+use App\Models\Asignatura; // 👈 Usamos el Modelo en lugar de DB directa
 
 class AsignaturaSeeder extends Seeder
 {
@@ -66,7 +66,7 @@ class AsignaturaSeeder extends Seeder
             // ================= CARRERA DE TI =================
             // Ciclo I
             ['nombre' => 'Algoritmos y Fundamentos de Programación', 'carrera' => 'TI', 'ciclo' => 'I', 'unidad_curricular' => 'Unidad Básica'],
-            ['nombre' => 'Algebra lineal', 'carrera' => 'TI', 'ciclo' => 'I', 'unidad_curricular' => 'Unidad Básica'], // Repetida nombre pero carrera TI
+            ['nombre' => 'Algebra lineal', 'carrera' => 'TI', 'ciclo' => 'I', 'unidad_curricular' => 'Unidad Básica'],
             ['nombre' => 'Calculo I', 'carrera' => 'TI', 'ciclo' => 'I', 'unidad_curricular' => 'Unidad Básica'],
             ['nombre' => 'Lenguaje y Comunicación', 'carrera' => 'TI', 'ciclo' => 'I', 'unidad_curricular' => 'Unidad Básica'],
             ['nombre' => 'Estructuras Discretas', 'carrera' => 'TI', 'ciclo' => 'I', 'unidad_curricular' => 'Unidad Básica'],
@@ -89,7 +89,7 @@ class AsignaturaSeeder extends Seeder
             ['nombre' => 'Gestión de Servicios TI', 'carrera' => 'TI', 'ciclo' => 'IV', 'unidad_curricular' => 'Unidad Profesional'],
             ['nombre' => 'Sostenibilidad Ambiental', 'carrera' => 'TI', 'ciclo' => 'IV', 'unidad_curricular' => 'Unidad Profesional'],
             ['nombre' => 'Gerencia Financiera', 'carrera' => 'TI', 'ciclo' => 'IV', 'unidad_curricular' => 'Unidad Profesional'],
-            ['nombre' => 'Administración de Bases de Datos', 'carrera' => 'TI', 'ciclo' => 'V', 'unidad_curricular' => 'Unidad Profesional'], // Nota: En TI aparece en V en el PDF o IV? El PDF la pone en V tabla 2.
+            ['nombre' => 'Administración de Bases de Datos', 'carrera' => 'TI', 'ciclo' => 'V', 'unidad_curricular' => 'Unidad Profesional'],
             // Ciclo V
             ['nombre' => 'Redes de Datos', 'carrera' => 'TI', 'ciclo' => 'V', 'unidad_curricular' => 'Unidad Profesional'],
             ['nombre' => 'Sistemas Operativos', 'carrera' => 'TI', 'ciclo' => 'V', 'unidad_curricular' => 'Unidad Profesional'],
@@ -114,12 +114,36 @@ class AsignaturaSeeder extends Seeder
             ['nombre' => 'Trabajo de Integración Curricular', 'carrera' => 'TI', 'ciclo' => 'VIII', 'unidad_curricular' => 'Unidad de Integración Curricular'],
         ];
 
-        // Insertar evitando duplicados por carrera y nombre
         foreach ($asignaturas as $asignatura) {
-            DB::table('asignaturas')->updateOrInsert(
-                ['nombre' => $asignatura['nombre'], 'carrera' => $asignatura['carrera']],
-                $asignatura
+            // 👇 APLICAMOS FORMATO PARA COHERENCIA CON CONTROLADOR
+            $nombreFormateado = $this->formatearTexto($asignatura['nombre']);
+
+            Asignatura::updateOrCreate(
+                [
+                    'nombre' => $nombreFormateado, 
+                    'carrera' => $asignatura['carrera']
+                ],
+                [
+                    'ciclo' => $asignatura['ciclo'],
+                    'unidad_curricular' => $asignatura['unidad_curricular']
+                ]
             );
         }
+    }
+
+    // 👇 MISMA FUNCIÓN DE FORMATO DEL CONTROLADOR
+    private function formatearTexto($texto) {
+        $texto = mb_convert_case($texto, MB_CASE_TITLE, "UTF-8");
+        
+        $romanos = [
+            'Ii' => 'II', 'Iii' => 'III', 'Iv' => 'IV', 'Vi' => 'VI',
+            'Vii' => 'VII', 'Viii' => 'VIII', 'Ix' => 'IX', 'Xi' => 'XI',
+            'Xii' => 'XII', 'Xiii' => 'XIII', 'Xiv' => 'XIV', 'Xv' => 'XV'
+        ];
+        
+        foreach ($romanos as $incorrecto => $correcto) {
+            $texto = preg_replace("/\b$incorrecto\b/u", $correcto, $texto);
+        }
+        return $texto;
     }
 }

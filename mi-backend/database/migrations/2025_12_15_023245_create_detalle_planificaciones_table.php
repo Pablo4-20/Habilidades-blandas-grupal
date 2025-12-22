@@ -19,7 +19,7 @@ return new class extends Migration
             
             // Relación con la habilidad
             $table->foreignId('habilidad_blanda_id')
-                  ->constrained('habilidades_blandas'); // Asegúrate que tu tabla de habilidades se llame así
+                  ->constrained('habilidad_blandas'); // Asegúrate que tu tabla de habilidades se llame así
             
             // Aquí se guardará el texto largo con las actividades seleccionadas
             $table->text('actividades'); 

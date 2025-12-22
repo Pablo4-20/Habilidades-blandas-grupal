@@ -18,7 +18,7 @@ return new class extends Migration
             // Agregamos la columna de habilidad blanda desde el inicio
             $table->foreignId('habilidad_blanda_id')
                   ->nullable()
-                  ->constrained('habilidades_blandas')
+                  ->constrained('habilidad_blandas')
                   ->onDelete('cascade'); 
 
             $table->enum('parcial', ['1', '2']);

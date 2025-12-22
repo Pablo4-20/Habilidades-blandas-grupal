@@ -59,8 +59,7 @@ const Login = () => {
             } else {
                 navigate('/dashboard'); 
             }
-            // Redirección al Dashboard
-            navigate('/dashboard'); 
+          
 
         } catch (err) {
             console.error(err); 

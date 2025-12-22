@@ -36,7 +36,10 @@ class UsuarioSeeder extends Seeder
             'apellidos' => 'García',
             'password' => Hash::make('password'),
             'rol' => 'coordinador',
-            'created_at' => now(), 'updated_at' => now(),
+            'email_verified_at' => now(),
+            'must_change_password' => false,
+            'created_at' => now(), 
+            'updated_at' => now(),
         ]
     );
 
@@ -49,7 +52,10 @@ class UsuarioSeeder extends Seeder
             'apellidos' => 'Prueba',
             'password' => Hash::make('password'),
             'rol' => 'docente',
-            'created_at' => now(), 'updated_at' => now(),
+            'email_verified_at' => now(),
+            'must_change_password' => false,
+            'created_at' => now(), 
+            'updated_at' => now(),
         ]
     );
 }

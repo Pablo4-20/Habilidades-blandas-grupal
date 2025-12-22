@@ -18,7 +18,7 @@ return new class extends Migration
         $table->string('ciclo');    // IV, V, VI [cite: 40]
         $table->timestamps();
 
-        $table->unique(['nombre', 'carrera']);
+        $table->unique(['nombre', 'carrera'], 'unique_asignatura_carrera');
     });
 }
 

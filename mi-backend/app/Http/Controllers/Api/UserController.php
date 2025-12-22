@@ -26,9 +26,12 @@ class UserController extends Controller
             'cedula' => 'required|digits:10|unique:users,cedula',
             'nombres' => 'required|string',  
             'apellidos' => 'required|string', 
-            'email' => 'required|email|unique:users,email',
+            'email' => ['required', 'email','unique:users,email','regex:/^.+@(ueb\.edu\.ec|mailes\.ueb\.edu\.ec)$/i'
+            ],
             'rol' => 'required|in:admin,coordinador,docente,estudiante', // Validamos los roles permitidos
             // La contraseña será opcional, si no envían, se pone una por defecto
+        ], [
+            'email.regex' => 'El correo debe pertenecer al dominio ueb.edu.ec o mailes.ueb.edu.ec'
         ]);
         if (Estudiante::where('cedula', $request->cedula)->exists()) {
             return response()->json([
@@ -38,8 +41,8 @@ class UserController extends Controller
 
         $user = User::create([
             'cedula' => $request->cedula,
-            'nombres' => $request->nombres, 
-             'apellidos' => $request->apellidos, 
+            'nombres' => mb_convert_case($request->nombres, MB_CASE_TITLE, "UTF-8"), 
+            'apellidos' => mb_convert_case($request->apellidos, MB_CASE_TITLE, "UTF-8"),
             'email' => $request->email,
             'password' => Hash::make($request->password ?? 'password'), // Contraseña default: password
             'rol' => $request->rol,
@@ -102,6 +105,9 @@ class UserController extends Controller
             $emailFinal     = strtolower(trim($row[3]));
             $rolFinal       = strtolower(trim($row[5])); 
 
+            if (!preg_match('/^.+@(ueb\.edu\.ec|mailes\.ueb\.edu\.ec)$/i', $emailFinal)) {
+                    throw new \Exception("El correo $emailFinal no es institucional.");
+                }
             // --- 2. BÚSQUEDA ---
             $usuario = User::where('cedula', $cedulaFinal)
                            ->orWhere('cedula', $cedulaCSV)
@@ -120,7 +126,7 @@ class UserController extends Controller
             ];
 
             // --- 4. GUARDADO ---
-            // CORRECCIÓN AQUÍ 👇
+           
             if ($usuario) {
                 // Si existe, actualizamos (NO enviamos correo de registro)
                 $usuario->update($datosUsuario);
@@ -156,16 +162,28 @@ public function update(Request $request, string $id)
         'cedula' => 'required|digits:10|unique:users,cedula,' . $user->id, 
         'nombres' => 'required|string',
         'apellidos' => 'required|string',
-        'email' => 'required|email|unique:users,email,' . $user->id,
+        'email' => ['required', 'email', 'unique:users,email,' . $user->id, 
+                'regex:/^.+@(ueb\.edu\.ec|mailes\.ueb\.edu\.ec)$/i'
+            ],
         'rol' => 'required'
+    ], [
+        'email.regex' => 'El correo debe pertenecer al dominio ueb.edu.ec o mailes.ueb.edu.ec'
     ]);
 
     $data = $request->except(['password']);
-    if ($request->filled('password')) {
-        $data['password'] = Hash::make($request->password);
-    }
+    
+    if ($request->filled('nombres')) {
+            $data['nombres'] = mb_convert_case($request->nombres, MB_CASE_TITLE, "UTF-8");
+        }
+        if ($request->filled('apellidos')) {
+            $data['apellidos'] = mb_convert_case($request->apellidos, MB_CASE_TITLE, "UTF-8");
+        }
 
-    $user->update($data);
-    return response()->json($user);
-}
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($request->password);
+        }
+
+        $user->update($data);
+        return response()->json($user);
+    }
 }

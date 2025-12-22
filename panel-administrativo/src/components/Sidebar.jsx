@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import Swal from 'sweetalert2'; // <--- 1. IMPORTAMOS SWEETALERT
+import Swal from 'sweetalert2';
 import { 
     HomeIcon, 
     UsersIcon, 
@@ -10,11 +10,8 @@ import {
     ChevronLeftIcon,
     ChevronRightIcon,
     SparklesIcon,
-    BookOpenIcon
-} from '@heroicons/react/24/outline';
-import { 
-    // ... otros iconos
-    CalendarDaysIcon // <--- IMPORTAR ESTE ICONO
+    BookOpenIcon,
+    CalendarDaysIcon 
 } from '@heroicons/react/24/outline';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
@@ -23,19 +20,19 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // --- 2. NUEVA FUNCIÓN DE CIERRE DE SESIÓN ---
+    // --- FUNCIÓN DE CIERRE DE SESIÓN ---
     const handleLogout = () => {
         Swal.fire({
             title: '¿Cerrar Sesión?',
             text: "Estás a punto de salir del sistema.",
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonColor: '#2563EB', // Azul Tailwind (blue-600)
-            cancelButtonColor: '#9CA3AF',  // Gris Tailwind (gray-400)
+            confirmButtonColor: '#2563EB',
+            cancelButtonColor: '#9CA3AF',
             confirmButtonText: 'Sí, salir',
             cancelButtonText: 'Cancelar',
-            reverseButtons: true, // Pone el cancelar a la izquierda (estilo moderno)
-            backdrop: `rgba(0,0,0,0.4)` // Fondo oscuro suave
+            reverseButtons: true,
+            backdrop: `rgba(0,0,0,0.4)`
         }).then((result) => {
             if (result.isConfirmed) {
                 localStorage.clear();
@@ -47,9 +44,10 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     const menuItems = {
         admin: [
             { name: 'Inicio', path: '/dashboard', icon: HomeIcon },
+            // 👇 NUEVO ORDEN SOLICITADO
             { name: 'Gestión Usuarios', path: '/dashboard/usuarios', icon: UsersIcon },
-            { name: 'Habilidades', path: '/dashboard/habilidades', icon: SparklesIcon },
             { name: 'Asignaturas', path: '/dashboard/asignaturas', icon: BookOpenIcon },
+            { name: 'Habilidades', path: '/dashboard/habilidades', icon: SparklesIcon },
             { name: 'Periodos Académicos', path: '/dashboard/periodos', icon: CalendarDaysIcon }
         ],
         coordinador: [
@@ -114,13 +112,11 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             {/* USUARIO */}
             <div className="p-4 border-t border-gray-200">
                 <div className={`flex items-center ${!isOpen && 'justify-center'}`}>
-                    {/* CORRECCIÓN: Usamos nombres.charAt(0) */}
                     <div className="flex-shrink-0 h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold border border-blue-200">
                         {user?.nombres ? user.nombres.charAt(0).toUpperCase() : '?'}
                     </div>
                     
                     <div className={`ml-3 overflow-hidden transition-all duration-300 ${isOpen ? 'w-32 opacity-100' : 'w-0 opacity-0'}`}>
-                        {/* CORRECCIÓN: Mostramos Nombres y Apellidos */}
                         <p className="text-sm font-medium text-gray-700 truncate">
                             {user?.nombres} {user?.apellidos?.split(' ')[0]}
                         </p>

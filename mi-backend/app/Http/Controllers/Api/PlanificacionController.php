@@ -4,30 +4,25 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-// --- IMPORTACIONES OBLIGATORIAS ---
 use App\Models\Planificacion;
 use App\Models\HabilidadBlanda;
 use App\Models\Asignacion; 
-use App\Models\DetallePlanificacion; 
 use Illuminate\Support\Facades\DB;
 
 class PlanificacionController extends Controller
 {
     // Verificar habilidades y si ya existe planificación previa (EDICIÓN)
-public function verificar(Request $request, $asignatura_id)
+    public function verificar(Request $request, $asignatura_id)
     {
         try {
             $user = $request->user();
-            
-            // Recibimos el periodo desde el frontend
             $periodo = $request->query('periodo');
             $parcialSolicitado = $request->query('parcial');
 
-            // 1. Obtener Asignación (FILTRADA POR PERIODO SI EXISTE)
+            // 1. Obtener Asignación
             $queryAsignacion = Asignacion::where('asignatura_id', $asignatura_id)
                 ->where('docente_id', $user->id);
 
-            // CORRECCIÓN CLAVE: Si enviamos periodo, filtramos por él
             if ($periodo) {
                 $queryAsignacion->where('periodo', $periodo);
             }
@@ -37,12 +32,24 @@ public function verificar(Request $request, $asignatura_id)
             if (!$asignacion) {
                 return response()->json([
                     'tiene_asignacion' => false, 
-                    'message' => 'No tienes asignada esta materia en el periodo: ' . ($periodo ?? 'actual')
+                    'message' => 'No tienes asignada esta materia en el periodo indicado.'
                 ]);
             }
 
-            // 2. Obtener Habilidades Requeridas
-            $habilidades = HabilidadBlanda::where('asignatura_id', $asignatura_id)->get();
+            // 2. OBTENER HABILIDADES (CORREGIDO)
+            // Usamos 'with' para traer el nombre del catálogo y mapeamos para que el frontend lo entienda
+            $habilidades = HabilidadBlanda::with('catalogo')
+                ->where('asignatura_id', $asignatura_id)
+                ->get()
+                ->map(function($habilidad) {
+                    return [
+                        'id' => $habilidad->id, // ID de la asignación (importante para guardar)
+                        // 👇 AQUÍ RESCATAMOS EL NOMBRE Y DEFINICIÓN DEL CATÁLOGO
+                        'nombre' => $habilidad->catalogo ? $habilidad->catalogo->nombre : 'Sin Nombre',
+                        'definicion' => $habilidad->catalogo ? $habilidad->catalogo->definicion : '',
+                        'asignatura_id' => $habilidad->asignatura_id
+                    ];
+                });
 
             if ($habilidades->isEmpty()) {
                 return response()->json(['tiene_asignacion' => false, 'message' => 'Sin habilidades asignadas.']);
@@ -52,7 +59,7 @@ public function verificar(Request $request, $asignatura_id)
             $query = Planificacion::with('detalles')
                 ->where('asignatura_id', $asignatura_id)
                 ->where('docente_id', $user->id)
-                ->where('periodo_academico', $asignacion->periodo); // Usamos el periodo de la asignación encontrada
+                ->where('periodo_academico', $asignacion->periodo);
 
             if ($parcialSolicitado) {
                 $query->where('parcial', $parcialSolicitado);
@@ -62,7 +69,6 @@ public function verificar(Request $request, $asignatura_id)
 
             $planDocente = $query->first();
 
-            // ... (resto del código igual) ...
             $actividadesGuardadas = [];
             $esEdicion = false;
             $parcialGuardado = null;
@@ -71,6 +77,7 @@ public function verificar(Request $request, $asignatura_id)
                 $esEdicion = true;
                 $parcialGuardado = $planDocente->parcial;
                 foreach ($planDocente->detalles as $detalle) {
+                    // Guardamos las actividades seleccionadas
                     $actividadesGuardadas[$detalle->habilidad_blanda_id] = explode("\n", $detalle->actividades);
                 }
             }
@@ -88,10 +95,10 @@ public function verificar(Request $request, $asignatura_id)
             return response()->json(['message' => 'Error: ' . $e->getMessage()], 500);
         }
     }
-    // Guardar o Actualizar la planificación
+
+    // Guardar o Actualizar (Se mantiene igual, solo asegúrate de tener los imports correctos)
    public function store(Request $request)
     {
-        // 1. Validación
         $request->validate([
             'asignatura_id' => 'required',
             'docente_id' => 'required',
@@ -101,8 +108,6 @@ public function verificar(Request $request, $asignatura_id)
         ]);
 
         return DB::transaction(function () use ($request) {
-            // 2. Guardar o Actualizar Padre (Planificación)
-            // Buscamos por la clave única compuesta (asignatura + parcial + periodo)
             $planificacion = Planificacion::updateOrCreate(
                 [
                     'asignatura_id' => $request->asignatura_id,
@@ -110,15 +115,13 @@ public function verificar(Request $request, $asignatura_id)
                     'periodo_academico' => $request->periodo_academico
                 ],
                 [
-                    'docente_id' => $request->docente_id // Actualizamos el docente si fuera necesario
+                    'docente_id' => $request->docente_id 
                 ]
             );
 
-            // 3. Actualizar Hijos (Detalles)
-            // Primero eliminamos los detalles previos de esta planificación para evitar duplicados
+            // Reiniciamos detalles para evitar duplicados
             $planificacion->detalles()->delete();
 
-            // Recorremos el array que envió React e insertamos los nuevos
             foreach ($request->detalles as $detalle) {
                 $planificacion->detalles()->create([
                     'habilidad_blanda_id' => $detalle['habilidad_blanda_id'],

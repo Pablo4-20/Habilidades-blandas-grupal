@@ -13,23 +13,25 @@ use App\Models\User;
 
 class NewPasswordController extends Controller
 {
-    // 1. SOLICITAR ENLACE
     public function forgotPassword(Request $request)
     {
         $request->validate(['cedula' => 'required']);
 
         $user = User::where('cedula', $request->cedula)->first();
 
+        // Si no existe, fingimos éxito por seguridad
         if (!$user) {
-            // Retornamos 200 para no revelar si existe o no el usuario (seguridad)
             return response()->json(['message' => 'Si la cédula existe, se ha enviado un enlace.'], 200);
         }
 
-        // Generar Token
-        $token = Password::broker()->createToken($user);
+        // 👇 BLOQUEO DE SEGURIDAD: Verificar dominio antes de enviar
+        if (!preg_match('/^.+@(ueb\.edu\.ec|mailes\.ueb\.edu\.ec)$/i', $user->email)) {
+            return response()->json([
+                'message' => 'Este usuario no tiene un correo institucional válido asociado.'
+            ], 400);
+        }
 
-        // 👇 AQUÍ ESTÁ EL CAMBIO PARA PRODUCCIÓN:
-        // Toma la URL de tu .env, si no existe usa localhost por defecto
+        $token = Password::broker()->createToken($user);
         $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173'); 
         $link = "{$frontendUrl}/reset-password/{$token}?email={$user->email}";
 
@@ -53,10 +55,9 @@ class NewPasswordController extends Controller
             return response()->json(['message' => 'Error al enviar el correo.'], 500);
         }
 
-        return response()->json(['message' => 'Enlace enviado a tu correo electrónico.']);
+        return response()->json(['message' => 'Enlace enviado a tu correo institucional.']);
     }
 
-    // 2. RESTABLECER CONTRASEÑA
     public function resetPassword(Request $request)
     {
         $request->validate([

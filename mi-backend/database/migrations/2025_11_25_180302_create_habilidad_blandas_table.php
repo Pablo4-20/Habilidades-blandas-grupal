@@ -7,22 +7,25 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     public function up(): void
-    {
-        Schema::create('habilidades_blandas', function (Blueprint $table) {
-            $table->id();
-            
-            // ESTA ES LA COLUMNA QUE FALTABA
-            $table->foreignId('asignatura_id')->constrained('asignaturas')->onDelete('cascade');
-            
-            $table->string('nombre');
-            $table->text('definicion');
-            $table->text('actividades')->nullable();
-            $table->timestamps();
+{
+    Schema::create('habilidad_blandas', function (Blueprint $table) {
+        $table->id();
+        
+        // Relación con la Materia
+        $table->foreignId('asignatura_id')->constrained('asignaturas')->onDelete('cascade');
+        
+        // Relación con el Catálogo de Habilidades
+        $table->foreignId('catalogo_habilidad_id')->constrained('catalogo_habilidades')->onDelete('cascade');
 
-            // Evitamos duplicados
-            $table->unique(['asignatura_id', 'nombre']);
-        });
-    }
+        // Las actividades siguen siendo específicas de cada materia
+        $table->text('actividades')->nullable(); 
+        
+        $table->timestamps();
+
+        $table->unique(['asignatura_id', 'catalogo_habilidad_id'], 'unique_asignatura_habilidad');
+        
+    });
+}
 
     public function down(): void
     {

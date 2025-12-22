@@ -54,16 +54,22 @@ const GestionHabilidades = () => {
         } catch (error) { setHabilidades([]); } finally { setLoading(false); }
     };
 
-    // --- AGRUPACIÓN ---
+    // --- AGRUPACIÓN CORREGIDA ---
     const datosAgrupados = habilidades.reduce((acc, curr) => {
         const term = busqueda.toLowerCase();
-        const matchText = curr.nombre.toLowerCase().includes(term) || (curr.asignatura?.nombre || '').toLowerCase().includes(term);
-        const matchAsig = filtroAsignatura ? curr.asignatura_id == filtroAsignatura : true;
+        // Validación extra para evitar errores si asignatura es null
+        const nombreAsignatura = curr.asignatura?.nombre || 'Sin Asignatura';
+        
+        const matchText = curr.nombre.toLowerCase().includes(term) || nombreAsignatura.toLowerCase().includes(term);
+        // Conversión a String para asegurar comparación correcta
+        const matchAsig = filtroAsignatura ? String(curr.asignatura_id) === String(filtroAsignatura) : true;
 
         if (matchText && matchAsig) {
-            const idMateria = curr.asignatura_id;
+            const idMateria = curr.asignatura_id || 'sin-id';
+            
             if (!acc[idMateria]) {
                 acc[idMateria] = {
+                    idGrupo: idMateria, 
                     asignatura: curr.asignatura,
                     skills: []
                 };
@@ -103,24 +109,18 @@ const GestionHabilidades = () => {
    const handleGuardar = async (e) => {
         e.preventDefault();
         
-        // Validaciones básicas
         if(!form.asignatura_id) return Swal.fire('Error', 'Selecciona una asignatura.', 'warning');
         if(form.selected_skills.length === 0) return Swal.fire('Error', 'Selecciona al menos una habilidad.', 'warning');
 
         try {
-            // Preparamos los datos
             const payload = {
                 asignatura_id: form.asignatura_id,
-                // Mapeamos los nombres seleccionados a objetos con su definición
                 habilidades: form.selected_skills.map(name => ({
                     nombre: name,
                     definicion: CATALOGO_GUIA[name]
                 }))
             };
             
-            // --- CAMBIO CLAVE ---
-            // SIEMPRE usamos POST al endpoint '/habilidades'.
-            // El backend ahora es lo suficientemente inteligente para borrar las viejas y crear las nuevas.
             await api.post('/habilidades', payload);
             
             Swal.fire({
@@ -132,7 +132,7 @@ const GestionHabilidades = () => {
             });
 
             setShowModal(false);
-            fetchData(); // Recargamos la tabla para ver los cambios
+            fetchData(); 
             
         } catch (error) { 
             console.error(error);
@@ -140,7 +140,6 @@ const GestionHabilidades = () => {
         }
     };
 
-    // Eliminar una sola habilidad (botón X pequeño)
     const handleEliminarHabilidad = (id, nombre) => {
         Swal.fire({
             title: `¿Quitar ${nombre}?`, 
@@ -156,7 +155,6 @@ const GestionHabilidades = () => {
         });
     };
 
-    // Eliminar GRUPO COMPLETO (botón de la tabla)
     const handleEliminarGrupo = (nombreAsignatura, skills) => {
         Swal.fire({
             title: '¿Eliminar Grupo?',
@@ -168,7 +166,6 @@ const GestionHabilidades = () => {
         }).then(async (result) => {
             if (result.isConfirmed) {
                 try {
-                    // Eliminamos todas las habilidades de ese grupo en paralelo
                     await Promise.all(skills.map(s => api.delete(`/habilidades/${s.id}`)));
                     fetchData();
                     Swal.fire('Grupo Eliminado', 'Se han quitado todas las asignaciones.', 'success');
@@ -187,11 +184,24 @@ const GestionHabilidades = () => {
         try {
             Swal.fire({ title: 'Procesando...', didOpen: () => Swal.showLoading() });
             const res = await api.post('/habilidades/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-            Swal.fire('¡Éxito!', res.data.message, 'success');
+            
+            if (res.data.warning) {
+                Swal.fire({
+                    title: 'Importación Parcial',
+                    text: res.data.message,
+                    input: 'textarea',
+                    inputValue: res.data.warning,
+                    icon: 'warning',
+                    confirmButtonText: 'Entendido'
+                });
+            } else {
+                Swal.fire('¡Éxito!', res.data.message, 'success');
+            }
+
             setShowImportModal(false);
             setFileToUpload(null);
             fetchData();
-        } catch (error) { Swal.fire('Error', 'Formato inválido.', 'error'); }
+        } catch (error) { Swal.fire('Error', 'Error al procesar el archivo.', 'error'); }
     };
 
     const opcionesAsignaturas = asignaturas.map(a => ({
@@ -225,8 +235,28 @@ const GestionHabilidades = () => {
                     <input type="text" className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-100"
                         placeholder="Buscar materia o habilidad..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
                 </div>
-                <div className="w-full md:w-64">
-                    <CustomSelect placeholder="Filtrar por Materia" options={opcionesAsignaturas} value={filtroAsignatura} onChange={setFiltroAsignatura} searchable={true} />
+                
+                {/* 👇 SOLUCIÓN: Botón de limpiar separado para asegurar que funcione */}
+                <div className="w-full md:w-72 flex gap-2 items-center">
+                    <div className="flex-1">
+                        <CustomSelect 
+                            placeholder="Filtrar por Materia" 
+                            options={opcionesAsignaturas} 
+                            value={filtroAsignatura} 
+                            onChange={setFiltroAsignatura} 
+                            searchable={true} 
+                        />
+                    </div>
+                    {/* Botón rojo explícito si hay filtro activo */}
+                    {filtroAsignatura && (
+                        <button 
+                            onClick={() => setFiltroAsignatura('')}
+                            className="p-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition shadow-sm border border-red-100"
+                            title="Borrar filtro"
+                        >
+                            <XMarkIcon className="h-5 w-5" />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -244,23 +274,23 @@ const GestionHabilidades = () => {
                         {loading ? <tr><td colSpan="3" className="text-center py-10">Cargando...</td></tr> : 
                          listaAgrupada.length === 0 ? <tr><td colSpan="3" className="text-center py-10 text-gray-400"><FunnelIcon className="h-10 w-10 mx-auto mb-2 opacity-20"/>Sin datos.</td></tr> :
                          listaAgrupada.map((grupo) => (
-                            <tr key={grupo.asignatura?.id} className="hover:bg-gray-50 transition group">
-                                {/* COLUMNA 1: ASIGNATURA */}
+                            <tr key={grupo.idGrupo} className="hover:bg-gray-50 transition group">
                                 <td className="px-6 py-4 align-top">
                                     <div className="flex items-start gap-3">
                                         <div className="p-2 bg-blue-50 rounded-lg text-blue-600 mt-1">
                                             <BookOpenIcon className="h-5 w-5"/>
                                         </div>
                                         <div>
-                                            <h4 className="font-bold text-gray-900 text-sm">{grupo.asignatura?.nombre}</h4>
+                                            <h4 className="font-bold text-gray-900 text-sm">
+                                                {grupo.asignatura?.nombre || 'Materia Desconocida'}
+                                            </h4>
                                             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200 mt-1 inline-block">
-                                                {grupo.asignatura?.carrera}
+                                                {grupo.asignatura?.carrera || 'Sin carrera'}
                                             </span>
                                         </div>
                                     </div>
                                 </td>
 
-                                {/* COLUMNA 2: LISTA DE HABILIDADES */}
                                 <td className="px-6 py-4 align-top">
                                     <div className="flex flex-wrap gap-2">
                                         {grupo.skills.map(skill => (
@@ -280,21 +310,18 @@ const GestionHabilidades = () => {
                                     <p className="text-[10px] text-gray-400 mt-2 italic pl-1">* Actividades a definir por docente.</p>
                                 </td>
 
-                                {/* COLUMNA 3: ACCIONES CON ICONOS */}
                                 <td className="px-6 py-4 align-top text-right">
                                     <div className="flex justify-end gap-2">
-                                        {/* BOTÓN EDITAR */}
                                         <button 
-                                            onClick={() => openModal(grupo.asignatura.id, grupo.skills)}
+                                            onClick={() => grupo.asignatura ? openModal(grupo.asignatura.id, grupo.skills) : Swal.fire('Error', 'Datos de asignatura incompletos', 'error')}
                                             className="text-blue-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition" 
                                             title="Editar Grupo"
                                         >
                                             <PencilSquareIcon className="h-5 w-5" />
                                         </button>
                                         
-                                        {/* BOTÓN ELIMINAR GRUPO */}
                                         <button 
-                                            onClick={() => handleEliminarGrupo(grupo.asignatura.nombre, grupo.skills)}
+                                            onClick={() => handleEliminarGrupo(grupo.asignatura?.nombre || 'Grupo', grupo.skills)}
                                             className="text-gray-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition" 
                                             title="Eliminar todas las habilidades"
                                         >
@@ -308,7 +335,7 @@ const GestionHabilidades = () => {
                 </table>
             </div>
 
-            {/* MODAL (IGUAL AL ANTERIOR) */}
+            {/* MODAL EDITAR / CREAR */}
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 animate-fade-in">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 flex flex-col max-h-[90vh]">
@@ -365,7 +392,7 @@ const GestionHabilidades = () => {
                 </div>
             )}
 
-         {/* MODAL IMPORTAR */}
+            {/* MODAL IMPORTAR */}
             {showImportModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 animate-fade-in">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
@@ -374,8 +401,6 @@ const GestionHabilidades = () => {
                         
                         <div className="bg-slate-100 p-4 rounded-lg text-left mb-6 border border-slate-200">
                             <p className="text-xs font-bold text-slate-500 uppercase mb-2">Estructura del CSV:</p>
-                            
-                            {/* EJEMPLO VISUAL DE LA TABLA CSV */}
                             <div className="bg-white border border-slate-300 rounded overflow-hidden mb-2">
                                 <table className="w-full text-xs text-left">
                                     <thead className="bg-slate-50 text-slate-600 font-bold border-b">
@@ -394,14 +419,12 @@ const GestionHabilidades = () => {
                                     </tbody>
                                 </table>
                             </div>
-
                             <p className="text-[10px] text-gray-400">
                                 * El nombre de la asignatura debe ser exacto.<br/>
                                 * Las actividades se dejarán vacías para el docente.
                             </p>
                         </div>
 
-                        {/* INPUT DE ARCHIVO */}
                         <label className="block w-full cursor-pointer bg-green-50 border-2 border-dashed border-green-200 hover:bg-green-100 transition rounded-xl p-4 text-center mb-6">
                             <span className="text-sm font-bold text-green-700 block">
                                 {fileToUpload ? fileToUpload.name : "Clic aquí para buscar archivo .CSV"}
