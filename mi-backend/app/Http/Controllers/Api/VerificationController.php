@@ -14,10 +14,10 @@ class VerificationController extends Controller
         // 1. Buscar usuario
         $user = User::findOrFail($id);
 
-        // 2. Verificar firma de seguridad del enlace (Evita hackeos)
+        // 2. Verificar firma de seguridad
         if (!$request->hasValidSignature()) {
-            // Redirigir al frontend con error
-            return redirect(env('FRONTEND_URL', 'http://127.0.0.1:5173') . '/login?error=invalid_link');
+            // USAMOS env() DIRECTO COMO QUERÍAS
+            return redirect(env('FRONTEND_URL') . '/login?error=invalid_link');
         }
 
         // 3. Verificar correo si no lo está
@@ -26,9 +26,10 @@ class VerificationController extends Controller
             event(new Verified($user));
         }
 
-        // 4. Redirigir al Frontend con mensaje de éxito
-        return redirect(env('FRONTEND_URL', 'http://127.0.0.1:5173') . '/login?verified=true');
-    }
+        // 4. Redirigir al Frontend con éxito
+        // USAMOS env() DIRECTO
+        return redirect(env('FRONTEND_URL') . '/login?verified=true');
+    } // <--- ESTA LLAVE ERA LA QUE TE FALTABA
 
     public function resend(Request $request)
     {
