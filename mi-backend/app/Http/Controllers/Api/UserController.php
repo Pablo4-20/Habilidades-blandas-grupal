@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Auth\Events\Registered;
+use Illuminate\Validation\Rule;
 use App\Rules\ValidaCedula;
 
 class UserController extends Controller
@@ -159,10 +160,10 @@ public function update(Request $request, string $id)
 
     $request->validate([
         // unique:users,cedula,ID -> Ignora el ID actual para que no de error si no cambia su propia cédula
-       'cedula' => ['required', 'unique:users,cedula'. $user->id, new ValidaCedula], 
+       'cedula' => [ 'required',  Rule::unique('users', 'cedula')->ignore($user->id),  new ValidaCedula ],
         'nombres' => 'required|string',
         'apellidos' => 'required|string',
-        'email' => ['required', 'email', 'unique:users,email,' . $user->id, 
+        'email', ['required', 'email', Rule::unique('users', 'email')->ignore($user->id), 
                 'regex:/^.+@(ueb\.edu\.ec|mailes\.ueb\.edu\.ec)$/i'
             ],
         'rol' => 'required'
