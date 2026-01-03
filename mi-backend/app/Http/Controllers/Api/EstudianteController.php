@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Estudiante;
 use App\Models\User;
 use Illuminate\Http\Request;
+use App\Rules\ValidaCedula;
+use Illuminate\Validation\Rule;
 
 class EstudianteController extends Controller
 {
@@ -17,7 +19,7 @@ class EstudianteController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'cedula' => ['required', 'unique:users,cedula', new ValidaCedula],
+            'cedula' => ['required', 'unique:users,cedula', 'unique:estudiantes,cedula', new ValidaCedula],
             'nombres' => 'required',
             'apellidos' => 'required',
             'email' => 'required|email|unique:estudiantes,email',
@@ -39,7 +41,8 @@ class EstudianteController extends Controller
         
         $request->validate([
            'cedula' => ['required', 'unique:users,cedula', new ValidaCedula],
-            'email' => 'required|email|unique:estudiantes,email,' . $id,
+           'email' => ['required', 'email', Rule::unique('estudiantes', 'email')->ignore($id)
+           ],
         ]);
 
         $estudiante->update($request->all());
