@@ -163,7 +163,7 @@ public function update(Request $request, string $id)
        'cedula' => [ 'required',  Rule::unique('users', 'cedula')->ignore($user->id),  new ValidaCedula ],
         'nombres' => 'required|string',
         'apellidos' => 'required|string',
-        'email', ['required', 'email', Rule::unique('users', 'email')->ignore($user->id), 
+        'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id), 
                 'regex:/^.+@(ueb\.edu\.ec|mailes\.ueb\.edu\.ec)$/i'
             ],
         'rol' => 'required'
