@@ -1,7 +1,9 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: 'http://127.0.0.1:8000/api', // Tu URL actual
+    //baseURL: 'http://127.0.0.1:8000/api', // Tu URL actual
+    //      baseURL:import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api',
+    baseURL: 'http://181.224.197.175/api',
     headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
