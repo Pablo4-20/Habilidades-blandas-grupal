@@ -34,9 +34,12 @@ const CambiarPasswordInicial = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-yellow-50 p-4">
-            <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-md border-t-4 border-yellow-500">
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">Cambio de Contraseña Obligatorio</h2>
+        // CAMBIO 1: Fondo general azul muy suave (bg-blue-50)
+        <div className="min-h-screen flex items-center justify-center bg-blue-50 p-4">
+            {/* CAMBIO 2: Borde superior Azul Institucional Fuerte (border-blue-900) */}
+            <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-md border-t-4 border-blue-900">
+                {/* CAMBIO 3: Título en Azul Institucional */}
+                <h2 className="text-2xl font-bold text-blue-900 mb-2">Cambio de Contraseña Obligatorio</h2>
                 <p className="text-gray-600 mb-6 text-sm">
                     Por seguridad, debes cambiar la contraseña temporal asignada por el administrador antes de continuar.
                 </p>
@@ -44,13 +47,30 @@ const CambiarPasswordInicial = () => {
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-bold text-gray-700">Nueva Contraseña</label>
-                        <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-yellow-400 outline-none" required />
+                        {/* CAMBIO 4: Anillo de foco azul al escribir (focus:ring-blue-500) */}
+                        <input 
+                            type="password" 
+                            value={password} 
+                            onChange={e=>setPassword(e.target.value)} 
+                            className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+                            required 
+                        />
                     </div>
                     <div>
                         <label className="block text-sm font-bold text-gray-700">Confirmar Contraseña</label>
-                        <input type="password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-yellow-400 outline-none" required />
+                        <input 
+                            type="password" 
+                            value={confirmPassword} 
+                            onChange={e=>setConfirmPassword(e.target.value)} 
+                            className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+                            required 
+                        />
                     </div>
-                    <button type="submit" className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 rounded transition">
+                    {/* CAMBIO 5: Botón ROJO solicitado (bg-red-600 hover:bg-red-700) */}
+                    <button 
+                        type="submit" 
+                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded transition shadow-md hover:shadow-lg"
+                    >
                         Actualizar y Entrar
                     </button>
                 </form>

@@ -31,7 +31,12 @@ class EstudianteController extends Controller
                 'message' => 'Esta cédula ya está registrada como Personal Administrativo/Docente.'
             ], 422);
         }
-        $estudiante = Estudiante::create($request->all());
+        $datos = $request->all();
+        $datos['nombres'] = mb_convert_case(trim($request->nombres), MB_CASE_TITLE, "UTF-8");
+        $datos['apellidos'] = mb_convert_case(trim($request->apellidos), MB_CASE_TITLE, "UTF-8");
+
+        $estudiante = Estudiante::create($datos);
+        $estudiante->sendEmailVerificationNotification();
         return response()->json($estudiante, 201);
     }
 
@@ -56,7 +61,7 @@ class EstudianteController extends Controller
     }
 
     // --- CARGA MASIVA ROBUSTA ---
-public function import(Request $request)
+    public function import(Request $request)
     {
         $request->validate(['file' => 'required|file']);
         $file = $request->file('file');
@@ -81,7 +86,6 @@ public function import(Request $request)
             try {
                 // --- 1. NORMALIZACIÓN DE DATOS ---
                 
-                
                 $cedulaCSV = trim($row[0]);
                 $cedulaFinal = str_pad($cedulaCSV, 10, '0', STR_PAD_LEFT);
 
@@ -90,13 +94,10 @@ public function import(Request $request)
                 }
                 
                 // Nombres/Apellidos: Primera letra mayúscula (Formato Título)
-                // MB_CASE_TITLE es mejor que ucfirst porque maneja tildes (Á, É, Ñ)
                 $nombresFinal   = mb_convert_case(trim($row[1]), MB_CASE_TITLE, "UTF-8");
                 $apellidosFinal = mb_convert_case(trim($row[2]), MB_CASE_TITLE, "UTF-8");
                 
-                
                 $emailFinal = strtolower(trim($row[3]));
-
                 
                 $carreraRaw = trim($row[4]);
                 $carreraFinal = 'Software'; 
@@ -104,9 +105,19 @@ public function import(Request $request)
                     $carreraFinal = 'TI';
                 }
 
-              
-                $cicloFinal = strtoupper(trim($row[5]));
+                $cicloRaw = trim($row[5]);
 
+                // Traducción de Ciclos
+                $mapaCiclos = [
+                    '1' => 'I',   '2' => 'II',   '3' => 'III', '4' => 'IV',  '5' => 'V',
+                    '6' => 'VI',  '7' => 'VII',  '8' => 'VIII', '9' => 'IX', '10' => 'X'
+                ];
+
+                if (array_key_exists($cicloRaw, $mapaCiclos)) {
+                    $cicloFinal = $mapaCiclos[$cicloRaw];
+                } else {
+                    $cicloFinal = strtoupper($cicloRaw);
+                }
 
                 // --- 2. BÚSQUEDA ---
                 $estudiante = Estudiante::where('cedula', $cedulaFinal)
@@ -125,10 +136,17 @@ public function import(Request $request)
                 ];
 
                 if ($estudiante) {
+                    // Si ya existe, solo actualizamos datos
                     $estudiante->update($datosLimpios);
                     $actualizados++;
                 } else {
-                    Estudiante::create($datosLimpios);
+                    // --- AQUÍ ESTÁ EL CAMBIO ---
+                    // 1. Creamos y capturamos la instancia en una variable
+                    $nuevoEstudiante = Estudiante::create($datosLimpios);
+                    
+                    // 2. Enviamos el correo de verificación
+                    $nuevoEstudiante->sendEmailVerificationNotification();
+                    
                     $count++;
                 }
 
@@ -140,7 +158,7 @@ public function import(Request $request)
         }
 
         return response()->json([
-            'message' => "Proceso completado: $count nuevos, $actualizados actualizados con formato corregido."
+            'message' => "Proceso completado: $count nuevos (correos enviados), $actualizados actualizados."
         ]);
     }
 }

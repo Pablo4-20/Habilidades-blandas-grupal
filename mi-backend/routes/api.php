@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\PeriodoAcademicoController;
 use App\Http\Controllers\Api\VerificationController;
 use App\Http\Controllers\Api\NewPasswordController;
 use App\Http\Controllers\Api\CatalogoController;
+use App\Http\Controllers\Api\VerificationEstudianteController;
 
 // 1. LOGIN (Público)
 Route::post('/login', [AuthController::class, 'login']);
@@ -28,6 +29,9 @@ Route::post('/reset-password', [NewPasswordController::class, 'resetPassword']);
 // Verificación de Email
 Route::get('/email/verify/{id}/{hash}', [VerificationController::class, 'verify'])
     ->name('verification.verify'); 
+
+Route::get('/email/verify-student/{id}/{hash}', [VerificationEstudianteController::class, 'verify'])
+    ->name('verification.verify.student');
 
 // 2. RUTAS PROTEGIDAS (Requieren Token)
 Route::middleware('auth:sanctum')->group(function () {
