@@ -66,15 +66,17 @@ const PlanificacionDocente = () => {
     }, []);
 
     // 2. EFECTO: Recarga al cambiar Materia o Parcial (o Periodo)
-    useEffect(() => {
-        if (form.asignatura_id && form.parcial && form.periodo_academico) {
-            cargarDatosPlanificacion();
-        }
+    useEffect(() => { // CAMBIO2
+        if (!form.asignatura_id) return;
+        if (!form.periodo_academico) return;
+        if (!form.parcial) return;
+
+        cargarDatosPlanificacion();
     }, [form.asignatura_id, form.parcial, form.periodo_academico]);
 
 
     const handleCambioMateria = (val) => {
-        const materia = misAsignaturas.find(m => m.id == val && m.periodo === form.periodo_academico);
+        const materia = misAsignaturas.find(m => m.id == val); //CAMBIO2
         let nuevoParcial = '1';
         
         // Auto-seleccionar parcial 2 si el 1 ya está listo
@@ -91,6 +93,9 @@ const PlanificacionDocente = () => {
     };
 
     const cargarDatosPlanificacion = async () => {
+        if (!form.asignatura_id || !form.periodo_academico || !form.parcial) { // CAMBIO2   
+            return;
+        }
         setHabilidadesAsignadas([]);
         setSeleccionActividades({});
         setEsEdicion(false);
@@ -100,7 +105,13 @@ const PlanificacionDocente = () => {
             const res = await api.get(`/planificaciones/verificar/${form.asignatura_id}?parcial=${form.parcial}&periodo=${encodeURIComponent(form.periodo_academico)}`);
             
             if (res.data.tiene_asignacion) {
-                const habilidades = res.data.habilidades;
+                const habilidades = Array.isArray(res.data.habilidades) //CAMBIO2
+                    ? res.data.habilidades
+                    : [];
+                if (habilidades.length === 0) {  //CAMBIO2
+                    setHabilidadesAsignadas([]);
+                    return;
+                }
                 const guardadas = res.data.actividades_guardadas || {};
                 const esModoEdicion = res.data.es_edicion;
 
@@ -208,7 +219,9 @@ const PlanificacionDocente = () => {
     };
 
     // --- FILTRADO DE ASIGNATURAS POR PERIODO ---
-    const asignaturasDelPeriodo = misAsignaturas.filter(a => a.periodo === form.periodo_academico);
+    const asignaturasDelPeriodo = form.periodo_academico //CAMBIO2
+        ? misAsignaturas.filter(a => a.periodo === form.periodo_academico)
+        : [];
 
     const opcionesAsignaturas = asignaturasDelPeriodo.map(a => ({
         value: a.id,
