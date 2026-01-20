@@ -24,6 +24,7 @@ const EvaluacionDocente = () => {
 
     // Selecciones
     const [selectedPeriodo, setSelectedPeriodo] = useState(''); // El usuario elige esto primero
+    const [periodoActivo, setPeriodoActivo] = useState(null);
     const [selectedAsignatura, setSelectedAsignatura] = useState('');
     const [selectedParcial, setSelectedParcial] = useState('1');
     const [habilidadActiva, setHabilidadActiva] = useState(null); 
@@ -35,8 +36,17 @@ const EvaluacionDocente = () => {
             .then(res => setAsignaturas(Array.isArray(res.data) ? res.data : []));
         
         // Cargar Periodos Activos
-        api.get('/periodos/activos')
-            .then(res => setPeriodos(Array.isArray(res.data) ? res.data : []));
+        api.get('/periodos')
+            .then(res => {
+                const lista = Array.isArray(res.data) ? res.data : [];
+                setPeriodos(lista);
+
+                const activo = lista.find(p => p.activo === 1 || p.activo === true);
+                if (activo) {
+                    setPeriodoActivo(activo);
+                    setSelectedPeriodo(activo.nombre);
+                }
+            });
     }, []);
 
     // --- MANEJO DE CAMBIO DE PERIODO ---
@@ -209,15 +219,25 @@ const EvaluacionDocente = () => {
                     {/* SELECTORES */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                         
-                        {/* 1. PERIODO ACADÉMICO (Seleccionable primero) */}
-                        <CustomSelect 
-                            label="1. Periodo Académico"
-                            icon={CalendarDaysIcon}
-                            options={opcionesPeriodos}
-                            value={selectedPeriodo}
-                            onChange={handleCambioPeriodo}
-                            placeholder="-- Seleccionar Periodo --"
-                        />
+                        {/* 1. PERIODO ACADÉMICO */}
+                        <div>
+                            <label className="flex items-center gap-2 text-xs font-bold uppercase text-gray-400 mb-2 ml-0">
+                                <span className="w-4 flex justify-center">
+                                    <CalendarDaysIcon className="h-4 w-4 text-blue-600" />
+                                </span>
+                                <span>1. Periodo Académico</span>
+                            </label>
+                            <div
+                                className={`flex items-center gap-2 w-full border rounded-lg p-2.5 cursor-not-allowed${periodoActivo
+                                    ? 'bg-gray-100 border-gray-300 text-gray-700'
+                                    : 'bg-red-50 border-red-200 text-red-600'
+                                    }`}
+                            >
+                                <span className="text-sm font-medium">
+                                    {periodoActivo ? periodoActivo.nombre : 'Cargando periodo academico'}
+                                </span>
+                            </div>
+                        </div>
 
                         {/* 2. MATERIA (Filtrada) */}
                         <div className={!selectedPeriodo ? 'opacity-50 pointer-events-none' : ''}>
