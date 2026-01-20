@@ -87,10 +87,10 @@ function App() {
 
             {/* ZONA ADMIN */}
             <Route element={<RoleGuard allowedRoles={['admin']} />}>
+                <Route path="periodos" element={<GestionPeriodos />} />
                 <Route path="usuarios" element={<GestionUsuarios />} />
                 <Route path="habilidades" element={<GestionHabilidades />} />
                 <Route path="asignaturas" element={<GestionAsignaturas />} /> 
-                <Route path="periodos" element={<GestionPeriodos />} />
             </Route>
 
             {/* ZONA COORDINADOR */}
