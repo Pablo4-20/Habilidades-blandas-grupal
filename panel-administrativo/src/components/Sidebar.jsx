@@ -45,10 +45,10 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         admin: [
             { name: 'Inicio', path: '/dashboard', icon: HomeIcon },
             // 👇 NUEVO ORDEN SOLICITADO
+            { name: 'Periodos Académicos', path: '/dashboard/periodos', icon: CalendarDaysIcon },
             { name: 'Gestión Usuarios', path: '/dashboard/usuarios', icon: UsersIcon },
             { name: 'Asignaturas', path: '/dashboard/asignaturas', icon: BookOpenIcon },
             { name: 'Habilidades', path: '/dashboard/habilidades', icon: SparklesIcon },
-            { name: 'Periodos Académicos', path: '/dashboard/periodos', icon: CalendarDaysIcon }
         ],
         coordinador: [
             { name: 'Inicio', path: '/dashboard', icon: HomeIcon },
