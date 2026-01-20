@@ -30,6 +30,7 @@ const PlanificacionDocente = () => {
     const [periodos, setPeriodos] = useState([]); // NUEVO: Lista de periodos
     const [estudiantes, setEstudiantes] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [periodoActivo, setPeriodoActivo] = useState(null);
 
     const [habilidadesAsignadas, setHabilidadesAsignadas] = useState([]);
     const [form, setForm] = useState({
@@ -48,9 +49,19 @@ const PlanificacionDocente = () => {
             setMisAsignaturas(Array.isArray(res.data) ? res.data : []);
         });
         
-        // NUEVO: Cargar periodos disponibles
-        api.get('/periodos/activos').then(res => {
-            setPeriodos(Array.isArray(res.data) ? res.data : []);
+        // NUEVO: Cargar periodos predeterminado
+        api.get('/periodos').then(res => {
+            const lista = Array.isArray(res.data) ? res.data : [];
+            setPeriodos(lista);
+
+            const activo = lista.find(p => p.activo === 1 || p.activo === true);
+            if (activo) {
+                setPeriodoActivo(activo);
+                setForm(prev => ({
+                    ...prev,
+                    periodo_academico: activo.nombre
+                }));
+            }
         });
     }, []);
 
@@ -61,15 +72,6 @@ const PlanificacionDocente = () => {
         }
     }, [form.asignatura_id, form.parcial, form.periodo_academico]);
 
-    // NUEVO: Manejo de cambio de periodo
-    const handleCambioPeriodo = (val) => {
-        setForm(prev => ({
-            ...prev,
-            periodo_academico: val,
-            asignatura_id: '' // Reseteamos la materia porque cambian según el periodo
-        }));
-        setHabilidadesAsignadas([]);
-    };
 
     const handleCambioMateria = (val) => {
         const materia = misAsignaturas.find(m => m.id == val && m.periodo === form.periodo_academico);
@@ -247,15 +249,17 @@ const PlanificacionDocente = () => {
                     <form onSubmit={handleSubmit}>
                         <div className={`p-6 rounded-2xl shadow-sm border mb-6 space-y-4 transition-colors ${esEdicion ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'}`}>
                             
-                            {/* 1. SELECCIÓN DE PERIODO (NUEVO) */}
-                            <CustomSelect 
-                                label="1. Selecciona el Periodo Académico"
-                                icon={CalendarDaysIcon}
-                                placeholder="-- Elegir periodo --"
-                                options={opcionesPeriodos}
-                                value={form.periodo_academico}
-                                onChange={handleCambioPeriodo}
-                            />
+                            {/* 1. PERIODO ACADEMICO */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
+                                    1. Periodo Académico 
+                                </label>
+                                <div className={`flex items-center gap-2 w-full border rounded-lg p-2.5 cursor-not-allowed
+                                    ${periodoActivo ? 'bg-gray-100 border-gray-300 text-gray-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
+                                    <CalendarDaysIcon className="h-5 w-5" />
+                                    <span className="text-sm font-medium">{periodoActivo ? periodoActivo.nombre : 'Sin Periodo Activo'}</span>
+                                </div>
+                            </div>
 
                             {/* 2. SELECCIÓN DE ASIGNATURA (Filtrada) */}
                             <div className={`transition-all ${form.periodo_academico ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
