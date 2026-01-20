@@ -251,13 +251,21 @@ const PlanificacionDocente = () => {
                             
                             {/* 1. PERIODO ACADEMICO */}
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
-                                    1. Periodo Académico 
+                                <label className="flex items-center gap-2 text-xs font-bold uppercase text-gray-400 mb-2 ml-0">
+                                    <span className="w-4 flex justify-center">
+                                        <CalendarDaysIcon className="h-4 w-4 text-blue-600" />
+                                    </span>
+                                    <span>1. Periodo Académico</span>
                                 </label>
-                                <div className={`flex items-center gap-2 w-full border rounded-lg p-2.5 cursor-not-allowed
-                                    ${periodoActivo ? 'bg-gray-100 border-gray-300 text-gray-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
-                                    <CalendarDaysIcon className="h-5 w-5" />
-                                    <span className="text-sm font-medium">{periodoActivo ? periodoActivo.nombre : 'Cargando periodo académico'}</span>
+                                <div
+                                    className={`flex items-center gap-2 w-full border rounded-lg p-2.5 cursor-not-allowed${periodoActivo
+                                        ? 'bg-gray-100 border-gray-300 text-gray-700'
+                                        : 'bg-red-50 border-red-200 text-red-600'
+                                        }`}
+                                >
+                                    <span className="text-sm font-medium">
+                                        {periodoActivo ? periodoActivo.nombre : 'Cargando periodo academico'}
+                                    </span>
                                 </div>
                             </div>
 
