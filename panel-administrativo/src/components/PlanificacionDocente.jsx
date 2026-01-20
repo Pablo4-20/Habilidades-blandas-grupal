@@ -257,7 +257,7 @@ const PlanificacionDocente = () => {
                                 <div className={`flex items-center gap-2 w-full border rounded-lg p-2.5 cursor-not-allowed
                                     ${periodoActivo ? 'bg-gray-100 border-gray-300 text-gray-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
                                     <CalendarDaysIcon className="h-5 w-5" />
-                                    <span className="text-sm font-medium">{periodoActivo ? periodoActivo.nombre : 'Sin Periodo Activo'}</span>
+                                    <span className="text-sm font-medium">{periodoActivo ? periodoActivo.nombre : 'Cargando periodo académico'}</span>
                                 </div>
                             </div>
 
